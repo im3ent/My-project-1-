@@ -37,7 +37,7 @@ public class SpawnUnitEffect : CardEffect {
         if (newUnit != null) 
         {
             
-            newUnit.Initialize(associatedCardData);
+            newUnit.Initialize(new RuntimeCard(associatedCardData,ctx.caster));
             // 4. 注册到管理器
             GameManager.Instance.RegisterUnit(newUnit, isEnemy);
             

@@ -20,36 +20,11 @@ public class CharacterBase : MonoBehaviour
     private bool isDying = false;
     [Header("Data Reference")]
     public CardDefinition cardData;
+    public RuntimeCard sourceRuntimeCard;
 
-    [Header("状态列表")]
-    // 这里存着角色身上所有的 Buff 和 Debuff
-    public List<StatusEffectInstance> currentStatuses = new();
     
     private bool isInitialized = false;
-    // --- 核心方法 1：施加状态 ---
-    public void ApplyStatus(StatusType type, int duration)
-    {
-        // 检查是不是已经有这个状态了
-        var existingStatus = currentStatuses.FirstOrDefault(s => s.type == type);
 
-        if (existingStatus != null)
-        {
-            // 如果有了，通常是刷新时间，或者叠加层数
-            existingStatus.duration = Mathf.Max(existingStatus.duration, duration);
-            Debug.Log($"{characterName} 的 {type} 刷新了，剩余 {existingStatus.duration} 回合");
-        }
-        else
-        {
-            // 如果没有，加个新的
-            currentStatuses.Add(new StatusEffectInstance(type, duration));
-            Debug.Log($"{characterName} 获得了状态: {type}");
-        }
-    }
-    // --- 核心方法 2：检查有没有某个状态 ---
-    public bool HasStatus(StatusType type)
-    {
-        return currentStatuses.Any(s => s.type == type);
-    }
 
     public void ApplyBuff(int atkMod, int healthMod)
     {
@@ -73,18 +48,19 @@ public class CharacterBase : MonoBehaviour
         // 这里的 baseMaxHealth == 0 是为了防止 SpawnUnitEffect 已经初始化过一次了
         if (cardData != null && baseMaxHealth == 0)
         {
-            Initialize(cardData);
+            Initialize (new RuntimeCard(cardData, this));
         }
     }
-    public virtual void Initialize(CardDefinition data) 
+    public virtual void Initialize(RuntimeCard sourceCard) 
     {
         if (isInitialized) return; // 如果已经初始化过，就别再动了
         // 1. 存蓝图
-        cardData = data; 
+        this.sourceRuntimeCard = sourceCard;
+        this.cardData = sourceCard.Data;
 
         // 2. 设定“地基”（Base）
-        baseMaxHealth = data.health;
-        baseAttack = data.attack;
+        baseMaxHealth = sourceCard.health; // 👈 读实例数据！
+        baseAttack = sourceCard.attack;
         // 3. 设定“初始状态”（Current）
         // 刚出生时，如果没有光环，当前值就应该等于基础值
 
@@ -101,16 +77,13 @@ public class CharacterBase : MonoBehaviour
     {
         var finalDamage = info.amount;
 
-        // --- 1. 处理 易伤 (Vulnerable) ---
-        // 只有当伤害类型不是“真实伤害” 且 没说要“无视易伤”时，才计算易伤
-        if (info.type != DamageType.True && !info.ignoreVulnerable)
+        var stateManager = GetComponent<CharacterStateManager>();
+        
+        if (stateManager != null)
         {
-            // 假设你有一个 isVulnerable 变量
-            if (HasStatus(StatusType.Vulnerable))
-            {
-                finalDamage = Mathf.RoundToInt(finalDamage * 1.5f);
-            }
+            finalDamage = stateManager.GetModifiedIncomingDamage(finalDamage);
         }
+
 
         // --- 2. 处理 护甲 (Armor) ---
         // 只有当伤害类型是“物理” 且 没说要“无视护甲”时，才计算护甲

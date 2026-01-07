@@ -15,21 +15,18 @@ public abstract class CardEffect : ScriptableObject
     public abstract float Execute(EffectContext ctx);
 
     /// <summary>
-    /// 使用上下文来计算 UI 显示数值
+    /// 获取用于 UI 描述的数值
     /// </summary>
-    /// <param name="card">这张牌本身）</param>
-    /// <param name="owner">卡牌效果与施法者有联动时需要</param>
-    /// <param name="baseVal">基础值</param>
-    /// <param name="finalVal">计算后的最终值</param>
-    /// <returns>是否有数值</returns>
-    public virtual bool GetDescriptionValue(CardDefinition card, CharacterBase owner, out int baseVal, out int finalVal)
+    /// <param name="card">运行时的卡牌实例 (包含 Data, Owner 和 动态数值)</param>
+    /// <param name="baseVal">基础值 (配表填的)</param>
+    /// <param name="finalVal">计算后的最终值 (加了法强/Buff的)</param>
+    /// <returns>如果有数值返回 true，否则 false</returns>
+    public virtual bool GetDescriptionValue(RuntimeCard card, out int baseVal, out int finalVal)
     {
         baseVal = 0;
         finalVal = 0;
         return false;
     }
-    
-    // CharacterBase owner (谁拿着这张牌？)
 
 }
 

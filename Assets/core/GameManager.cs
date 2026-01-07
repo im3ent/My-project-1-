@@ -46,6 +46,11 @@ public class GameManager : MonoBehaviour
         isPlayerTurn = true;
         // 1. 回费
         ResetMana();
+        
+        // ✨ 1. 触发玩家身上的 Buff (中毒、自动抽牌)
+        var playerState = player.GetComponent<CharacterStateManager>();
+        if (playerState != null) playerState.OnTurnStart();
+        //??
         // 2. 触发场上【友方】随从的“回合开始”效果 (扳机行为)
         // 使用副本遍历防止在执行效果时列表被修改导致报错
         var currentAllies = new List<CharacterBase>(allies);
@@ -61,8 +66,6 @@ public class GameManager : MonoBehaviour
                             
         // 3. 系统强制抽牌 (抽牌通常在扳机之后)
         HandManager.Instance.DrawCard(player);
-
-
         
         yield return null;
     }
@@ -76,15 +79,20 @@ public class GameManager : MonoBehaviour
     }
     private IEnumerator PlayerTurnEnding()
     {
-        // 1. 触发场上【友方】随从的“回合结束”效果
+        // 1. 触发玩家身上的 Buff 回合结束逻辑 (移除临时Buff)
+        var playerState = player.GetComponent<CharacterStateManager>();
+        if (playerState != null) playerState.OnTurnEnd();
+        //??
+        // 2. 触发场上【友方】随从的“回合结束”效果
         var currentAllies = new List<CharacterBase>(allies);
         foreach (var ally in currentAllies) {
             if (ally != null && ally.currentHealth > 0) {
                 yield return StartCoroutine(TriggerUnitEffects(ally, false));
             }
         }
+        
         OnBoardChanged();//回合开始场景：有些特殊的随从效果是“在你的回合开始时，获得攻击力”。
-        // 2. 进入敌人回合
+        // 3. 进入敌人回合
         StartCoroutine(EnemyTurn());
     }
 
@@ -161,7 +169,7 @@ public class GameManager : MonoBehaviour
         if (data == null) yield break;
 
         var effects = isStartOfTurn ? data.onTurnStartEffects : data.onTurnEndEffects;
-        var ctx = new EffectContext(unit, null, unit.cardData);
+        var ctx = new EffectContext(unit, null, unit.sourceRuntimeCard);
         foreach (var effect in effects) 
         {
             // 在效果执行前，让随从抖一下或者发个光
@@ -175,11 +183,11 @@ public class GameManager : MonoBehaviour
     // --- 核心逻辑：打出一张牌 ---
     private IEnumerator PlayCardRoutine(EffectContext ctx)
     {
-        var card = ctx.sourceCard;
-        var repeatCount = PlayerStateManager.Instance.GetModifierValue(ModifierType.DoubleCast,1);
+        var card = ctx.SourceCard;
+        int totalCasts = 1 + ctx.repeatCount;
         // 执行所有“打出时”的效果
         // 关键点：这里是一个循环，不管你有 1 个技能还是 10 个技能，都会依次执行
-        for (var i = 0; i < repeatCount; i++)
+        for (var i = 0; i < totalCasts; i++)
         {
             foreach (var effect in card.onPlayEffects)
 
@@ -204,86 +212,77 @@ public class GameManager : MonoBehaviour
             //SpawnMinion(card); 
         }
         
-        foreach (var type in ctx.modifiersToConsume)
-        {
-            PlayerStateManager.Instance.ConsumeModifier(type);
-        }
+
         OnBoardChanged();
     }
     
     public void PlayCard(RuntimeCard runtimeCard, CharacterBase target)
     {
-        PlayerStateManager.Instance.ConsumeModifier(ModifierType.CostReduction);
         var caster = runtimeCard.Owner;
         var cardData = runtimeCard.Data;
-        var ctx = new EffectContext(caster, target, cardData);
-        
-        //if (caster.isPlayer) 
-        {
-            // 这一步把 CostReduction 也整合进去了，或者单独处理
-            //PlayerStateManager.Instance.ConsumeModifier(ModifierType.CostReduction);
 
-            // ✨ 核心优化：自动收集可消耗的 Buff
-            // 把“什么牌吃什么Buff”的逻辑封装进 Manager
-            var modifiers = PlayerStateManager.Instance.GetConsumableModifiersForCard(cardData);
-            ctx.modifiersToConsume.AddRange(modifiers);
+        var stateManager = caster.GetComponent<CharacterStateManager>();
+        
+        int finalCost = runtimeCard.Data.manaCost;
+        if (stateManager != null) 
+        {
+            finalCost = stateManager.GetCalculatedCost(runtimeCard);
+        }
+
+        // 扣费逻辑...
+        if (!TryUseMana(finalCost)) return; // 没钱直接退
+
+        // 3. 构建上下文
+        var ctx = new EffectContext(caster, target, runtimeCard);
+    
+        // 4. ✨ 核心：触发 "OnPlayCard" 钩子
+        // 这里会自动处理：双倍施法叠加次数、减费Buff消耗
+        if (stateManager != null)
+        {
+            stateManager.OnPlayCard(ctx);
         }
 
         
         StartCoroutine(PlayCardRoutine(ctx));
     }
     
-    // 计算玩家当前的法术强度总和
-    public int GetTotalSpellPower()
-    {
-        var total = 0;
 
-        // 来源 1：PlayerStateManager (临时 Buff)
-        total += PlayerStateManager.Instance.GetModifierValue(ModifierType.SpellDamage, 0);
 
-        // 来源 2：场上随从的光环 (如果有随从提供法强)
-        // 这里假设你的 AuraEffect 扩展了 SpellDamage 属性，或者你有专门的 Tag
-        foreach (var unit in allUnits)
-        {
-            if (unit.isEnemy) continue; // 只算友方的
-            // 简单示例：如果卡牌描述里写了 SpellDamage+1
-            // 实际项目中建议在 CardDefinition 或 Aura 里加专门字段
-            if (unit.cardData.cardName == "Kobold Geomancer") 
-            {
-                total += 1;
-            }
-        }
-
-        return total;
-    }
 
     // ✨ 核心辅助方法：输入基础伤害，输出最终伤害
-    public int GetModifiedDamage(CardDefinition card, int baseDamage)
+    public int GetModifiedDamage(RuntimeCard card, int baseDamage)
     {
-        // 规则：只有“法术牌”才享受法强
-        if (card.cardType == CardType.Spell)
+        // 如果还没重构 CharacterStateManager，这里可能还是 GetComponent
+        var stateManager = card.Owner.GetComponent<CharacterStateManager>();
+        int finalDamage = baseDamage;
+
+        // A. 先算人物属性加成 (力量/法强)
+        if (stateManager != null)
         {
-            return baseDamage + GetTotalSpellPower();
+            finalDamage = stateManager.GetModifiedOutgoingDamage(finalDamage);
+        
+            // 如果法强是独立逻辑，也可以在这里单独加
+            // if (card.Data.cardType == CardType.Spell) finalDamage += stateManager.GetSpellPower();
         }
-    
-        // 随从战吼造成的伤害通常不吃法强 (参考炉石规则)
-        return baseDamage;
+
+        // B. 再算卡牌自身的动态加成 (这才是 RuntimeCard 的精髓！)
+        // 假设 RuntimeCard 里有个 damageModifier 字段 (比如被附魔了)
+        // finalDamage += card.damageModifier; 
+
+        return finalDamage;
     }
     
     // 获取某张卡当前的实际费用
-    public int GetModifiedCost(CardDefinition card)
+    public int GetModifiedCost(RuntimeCard card)
     {
-        // 1. 获取基础费用
-        var finalCost = card.manaCost;
+        var stateManager = card.Owner.GetComponent<CharacterStateManager>();
+        int cost = card.manaCost;
+        if (stateManager != null)
+        {
+            cost = stateManager.GetCalculatedCost(card);
+        }
 
-        // 2. 获取减费 Buff 数值 (比如：下张牌减 3 费)
-        var reduction = PlayerStateManager.Instance.GetModifierValue(ModifierType.CostReduction, 0);
-
-        // 3. 计算 (防止减成负数)
-        finalCost -= reduction;
-        if (finalCost < 0) finalCost = 0;
-
-        return finalCost;
+        return Mathf.Max(0, cost);
     }
     
      // --- 尝试扣费 ---
@@ -298,25 +297,7 @@ public class GameManager : MonoBehaviour
         }
     }
     
-    // 召唤逻辑
-    private void SpawnMinion(CardDefinition card) {
-        // 1. 生成预制体
-        var minionObj = Instantiate(card.minionPrefab, allySpawnZone);
-        
-        // 2. 获取随从身上的脚本
-        var minionScript = minionObj.GetComponent<CharacterBase>();
-        
-        if (minionScript != null) 
-        {
-            minionScript.Initialize(card); 
-        
-            // 注册进列表
-            RegisterUnit(minionScript, false);
-        }
-       
-        
-    }
-    
+
    
 
     

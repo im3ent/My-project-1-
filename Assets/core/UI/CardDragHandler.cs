@@ -167,12 +167,12 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
 
     }
 
-    private void TryPlayCard(CharacterBase target) 
+    private void TryPlayCard(CharacterBase target)
     {
-        var card = _cardDisplay.runtimeCard.Data;
+        var card = _cardDisplay.runtimeCard;
         if (GameManager.Instance.TryUseMana(GameManager.Instance.GetModifiedCost(card))) {
             // 有钱！执行！
-            GameManager.Instance.PlayCard(_cardDisplay.runtimeCard, target);
+            GameManager.Instance.PlayCard(card, target);
             Destroy(gameObject); // 销毁卡牌
         } else {
             // 没钱，回家

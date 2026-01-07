@@ -14,11 +14,11 @@ public class HealEffect : CardEffect
         }
         return animateDuration;
     }
-    public override bool GetDescriptionValue(CardDefinition card, CharacterBase owner, out int baseVal, out int finalVal)
+    public override bool GetDescriptionValue(RuntimeCard card, out int baseVal, out int finalVal)
     {
         baseVal = value;
         // 直接在这里调用 GM 的计算公式，把逻辑封装在效果内部
-        finalVal = GameManager.Instance.GetModifiedDamage(card, value);
+        finalVal = 1;//GameManager.Instance.GetModifiedDamage(card, value);
         return true; // 告诉 UI：我有数值，请填坑
     }
 }
