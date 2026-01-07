@@ -12,26 +12,22 @@ public class CardDefinition : ScriptableObject
     [Header("mana")]
     public int manaCost;
 
-    [Header("核心类型")]
-    public CardType cardType; // 法术还是随从？
+
+    public CardType cardType; 
     
-    [Header("随从属性 (只有选Minion时才填)")]
-    public GameObject minionPrefab; // 随从的模型/预制体
+
+    public GameObject minionPrefab; 
     public int attack;
     public int health;
+    
     [Header("Card Effects")]
-    
-    
     public List<CardEffect> onPlayEffects;
-    public List<CardEffect> onDeathEffects; 
     public List<CardEffect> onTurnStartEffects; 
-
+    public List<CardEffect> onTurnEndEffects;
+    public List<AuraEffect> auraEffects;
+    
     [Header("needsTarget")]
-
     public bool needsTarget;
 }
 
-public enum CardType {
-    Spell,  // 法术：打出效果后，卡牌消失
-    Minion  // 随从：打出效果后，卡牌变成场上的一个单位
-}
+public enum CardType { Minion, Spell, Weapon }
