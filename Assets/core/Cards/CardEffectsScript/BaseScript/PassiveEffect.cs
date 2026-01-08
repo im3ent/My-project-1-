@@ -13,7 +13,7 @@ public abstract class PassiveEffect : ScriptableObject
 {
     [Header("通用配置")]
     [TextArea] public string description;
-    public PassiveScope scope = PassiveScope.AllAllies;
+    public PassiveScope scope = PassiveScope.Global;
     
     // --- 核心判断逻辑 (复用之前的) ---
     public bool ShouldTrigger(CharacterBase owner, CharacterBase target)
@@ -25,7 +25,7 @@ public abstract class PassiveEffect : ScriptableObject
             PassiveScope.AllAllies => owner.isEnemy == target.isEnemy,
             PassiveScope.AllEnemies => owner.isEnemy != target.isEnemy,
             PassiveScope.OtherAllies => owner != target && owner.isEnemy == target.isEnemy,
-            PassiveScope.Global => owner == target,
+            PassiveScope.Global => true,
             _ => false
         };
     }

@@ -280,17 +280,15 @@ public class GameManager : MonoBehaviour
     {
         var stateManager = card.Owner.GetComponent<CharacterStateManager>();
     
+        var finalDamage = baseDamage;
         // 如果没有状态管理器，直接返回基础值
         if (stateManager == null) return baseDamage;
 
-        // ✨ 分流逻辑：
-        // 1. 如果是【法术卡】，走专门的法术伤害计算流程 (支持 SpellPower, SpellMultiplier)
-        return card.Data.cardType == CardType.Spell ?
-            // 这就是我们之前辛苦写的那个方法！
-            stateManager.GetModifiedSpellDamage(baseDamage, card) :
-            // 2. 如果是【随从战吼】或【武器】，通常只受通用增伤影响 (比如 "造成的伤害翻倍")
-            // (当然，如果你想让战吼也吃法强，可以把上面的 if 去掉，或者改条件)
-            stateManager.GetModifiedOutgoingDamage(baseDamage);
+        //if (card.Data.cardType == CardType.Spell)
+        {
+            finalDamage = stateManager.GetModifiedSpellDamage(finalDamage, card);
+        }
+        return stateManager.GetModifiedOutgoingDamage(finalDamage);
     }
     
     // 获取某张卡当前的实际费用

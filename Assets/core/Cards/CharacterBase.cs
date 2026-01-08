@@ -13,6 +13,7 @@ public class CharacterBase : MonoBehaviour
     public string characterName;
     public int currentMaxHealth;
     public int currentHealth;
+    public int baseSpellPower;
     public int spellPower; 
     public int currentArmor;
     public int currentAttack;
@@ -170,6 +171,7 @@ public class CharacterBase : MonoBehaviour
             // 管家已经把 基础值 + Buff + 光环 全部算好了
             currentAttack = stateManager.GetCalculatedAttack(baseAttack);
             currentMaxHealth = stateManager.GetCalculatedMaxHealth(baseMaxHealth);
+            spellPower = stateManager.GetTotalSpellPower(baseSpellPower);
         }
         else
         {

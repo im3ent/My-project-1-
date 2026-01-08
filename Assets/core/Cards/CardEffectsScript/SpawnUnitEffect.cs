@@ -36,7 +36,7 @@ public class SpawnUnitEffect : CardEffect {
         var newUnit = newUnitObj.GetComponent<CharacterBase>();
         if (newUnit != null) 
         {
-            
+            newUnit.isEnemy = this.isEnemy;
             newUnit.Initialize(new RuntimeCard(associatedCardData,ctx.caster));
             // 4. 注册到管理器
             GameManager.Instance.RegisterUnit(newUnit, isEnemy);
@@ -54,4 +54,11 @@ public class SpawnUnitEffect : CardEffect {
     }
     
 
+}
+// 1. 定义召唤阵营模式
+public enum SpawnSide {
+    CasterSide,    // 召唤在施法者这一方 (常规随从)
+    OpponentSide,  // 召唤在对手那一方 (给对面的负面随从/炸弹)
+    ForcePlayer,   // 强制召唤在玩家这一边
+    ForceEnemy     // 强制召唤在敌人那一边
 }

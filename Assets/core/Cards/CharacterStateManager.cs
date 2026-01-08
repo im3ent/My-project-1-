@@ -198,7 +198,7 @@ public class CharacterStateManager : MonoBehaviour
         float totalMultiplier = 1.0f;
 
         // 1. 自身基础法强 (CharacterBase 里的属性)
-        totalAdditive += ownerCharacter.spellPower;
+        totalAdditive += ownerCharacter.baseSpellPower;
 
         // 2. Status Buff (如：法术药水)
         foreach (var status in statusList)
@@ -219,7 +219,6 @@ public class CharacterStateManager : MonoBehaviour
                 {
                     if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
                     {
-                        // ⚠️ 待 PassiveEffect 更新
                         totalAdditive += passive.GetSpellDamageAdditive(sourceUnit);
                         totalMultiplier *= passive.GetSpellDamageMultiplier(sourceUnit);
                     }
@@ -231,7 +230,38 @@ public class CharacterStateManager : MonoBehaviour
         return Mathf.Max(0, Mathf.FloorToInt(finalVal));
     }
     
-    
+    // Assets/core/Cards/CharacterStateManager.cs
+
+    /// <summary>
+    /// ✨ 新增：只计算当前总法术强度加成
+    /// </summary>
+    /// <param name="baseVal"></param>
+    public int GetTotalSpellPower(int baseVal)
+    {
+        int total = baseVal; // 这里的 spellPower 应该是你初始自带的(如有)
+
+        // 1. 统计 Buff 提供的法强
+        foreach (var status in statusList)
+        {
+            total += status.Data.GetSpellDamageAdditive(status);
+        }
+
+        // 2. 统计全场光环提供的法强
+        foreach (var sourceUnit in GameManager.Instance.allUnits)
+        {
+            if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
+            if (sourceUnit.cardData?.passives == null) continue;
+
+            foreach (var passive in sourceUnit.cardData.passives)
+            {
+                if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
+                {
+                    total += passive.GetSpellDamageAdditive(sourceUnit);
+                }
+            }
+        }
+        return total;
+    }
     /// <summary>
     /// ✨ 你要求的：计算最终造成的伤害
     /// (用于处理 "力量"、"虚弱" 等 Buff)
