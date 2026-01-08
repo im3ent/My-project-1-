@@ -24,7 +24,10 @@ public class CardDefinition : ScriptableObject
     public List<CardEffect> onPlayEffects;
     public List<CardEffect> onTurnStartEffects; 
     public List<CardEffect> onTurnEndEffects;
-    public List<AuraEffect> auraEffects;
+
+    [Header("Passive Effects (光环逻辑)")]
+    [Tooltip("随从在场时持续生效的逻辑效果 (如: 战吼双倍, 法术减费)")]
+    public List<PassiveEffect> passives; // 
     
     [Header("Innate Statuses (自带状态)")]
     [Tooltip("随从出生时自动获得的状态 (如: 嘲讽, 圣盾)")]

@@ -111,7 +111,127 @@ public class CharacterStateManager : MonoBehaviour
 
         return Mathf.Max(0, finalCost); // 费用不能小于 0
     }
+    //// 属性计算核心 
+    public int GetCalculatedAttack(int baseAttack)
+    {
+        var totalAdditive = 0;        // 加法池
+        var totalMultiplier = 1.0f; // 乘法池
 
+        // 1. 自身的 Buff (StatusEffect)
+        // 比如：王者祝福 (+4/+4)
+        foreach (var status in statusList)
+        {
+            totalAdditive += status.Data.GetAttackAdditive(status);
+            totalMultiplier *= status.Data.GetAttackMultiplier(status);
+        }
+
+        // 2. 全场的光环 (PassiveEffect)
+        var allUnits = GameManager.Instance.allUnits;
+        foreach (var sourceUnit in allUnits)
+        {
+            if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
+
+            // A. 随从自带的光环
+            if (sourceUnit.cardData != null && sourceUnit.cardData.passives != null)
+            {
+                foreach (var passive in sourceUnit.cardData.passives)
+                {
+                    if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
+                    {
+                        totalAdditive += passive.GetAttackAdditive(sourceUnit);
+                        totalMultiplier *= passive.GetAttackMultiplier(sourceUnit);
+                    }
+                }
+            }
+
+            // B. (可选) 装备提供的光环
+            // var equipManager = sourceUnit.GetComponent<EquipmentManager>(); ...
+        }
+            // --- C. 最终计算 ---
+        var finalVal = (baseAttack + totalAdditive) * totalMultiplier;
+        return Mathf.Max(0, Mathf.FloorToInt(finalVal));
+    }
+    public int GetCalculatedMaxHealth(int baseMaxHealth)
+    {
+        var totalAdditive = 0;
+        var totalMultiplier = 1.0f;
+
+        // 1. 自身的 Buff
+        foreach (var status in statusList)
+        {
+            totalAdditive += status.Data.GetHealthAdditive(status);
+            totalMultiplier *= status.Data.GetHealthMultiplier(status);
+        }
+
+        // 2. 全场的光环
+        var allUnits = GameManager.Instance.allUnits;
+        foreach (var sourceUnit in allUnits)
+        {
+            if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
+
+            if (sourceUnit.cardData != null && sourceUnit.cardData.passives != null)
+            {
+                foreach (var passive in sourceUnit.cardData.passives)
+                {
+                    if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
+                    {
+                        // ⚠️ 待 PassiveEffect 更新
+                        totalAdditive += passive.GetHealthAdditive(sourceUnit);
+                        totalMultiplier *= passive.GetHealthMultiplier(sourceUnit);
+                    }
+                }
+            }
+        }
+        float finalVal = (baseMaxHealth + totalAdditive) * totalMultiplier;
+        return Mathf.Max(0, Mathf.FloorToInt(finalVal));
+    }
+    
+    // 法术伤害计算 (Spell Damage) 
+    // ========================================================================
+
+    public int GetModifiedSpellDamage(int baseDamage, RuntimeCard card)
+    {
+        // 只有法术卡才享受法伤加成 (根据你的游戏规则调整)
+        if (card.Data.cardType != CardType.Spell) return baseDamage;
+
+        int totalAdditive = 0;
+        float totalMultiplier = 1.0f;
+
+        // 1. 自身基础法强 (CharacterBase 里的属性)
+        totalAdditive += ownerCharacter.spellPower;
+
+        // 2. Status Buff (如：法术药水)
+        foreach (var status in statusList)
+        {
+            totalAdditive += status.Data.GetSpellDamageAdditive(status);
+            totalMultiplier *= status.Data.GetSpellDamageMultiplier(status);
+        }
+
+        // 3. Passive Aura (如：玛里苟斯 +5法强)
+        var allUnits = GameManager.Instance.allUnits;
+        foreach (var sourceUnit in allUnits)
+        {
+            if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
+
+            if (sourceUnit.cardData != null && sourceUnit.cardData.passives != null)
+            {
+                foreach (var passive in sourceUnit.cardData.passives)
+                {
+                    if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
+                    {
+                        // ⚠️ 待 PassiveEffect 更新
+                        totalAdditive += passive.GetSpellDamageAdditive(sourceUnit);
+                        totalMultiplier *= passive.GetSpellDamageMultiplier(sourceUnit);
+                    }
+                }
+            }
+        }
+
+        float finalVal = (baseDamage + totalAdditive) * totalMultiplier;
+        return Mathf.Max(0, Mathf.FloorToInt(finalVal));
+    }
+    
+    
     /// <summary>
     /// ✨ 你要求的：计算最终造成的伤害
     /// (用于处理 "力量"、"虚弱" 等 Buff)

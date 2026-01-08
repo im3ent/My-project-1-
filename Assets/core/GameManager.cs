@@ -203,26 +203,15 @@ public class GameManager : MonoBehaviour
                 }
             }
         }
-        // --- 2. 区分类型 ---
-        if (card.cardType == CardType.Spell) {
-            // A. 法术逻辑：
-            // 效果已经在上面执行完了，现在只需要播放特效，然后销毁卡牌
-            // (手牌的销毁逻辑通常在 CardDragHandler 里 Destroy(gameObject))
-        }
-        else if (card.cardType == CardType.Minion) {
-            // B. 随从逻辑：
-            // 战吼已经在上面执行完了，现在需要把随从召唤到场上
-            //SpawnMinion(card); 
-        }
-        
-
         OnBoardChanged();
     }
     
     public bool PlayCard(RuntimeCard runtimeCard, CharacterBase target)
     {
         
-        // A. 先查“国法” (全局规则：有没有费，有没有被沉默)
+        if (runtimeCard == null) return false;
+        
+        // 先查“国法” (全局规则：有没有费，有没有被沉默)
         foreach (var rule in globalPlayRules)
         {
             var error = rule.Check(runtimeCard, target);
@@ -230,7 +219,7 @@ public class GameManager : MonoBehaviour
             return false;
         }
         
-        // B. 再查“家规” (卡牌自己的特殊要求)
+        // 再查“家规” (卡牌自己的特殊要求)
         // 比如斩杀卡配置了一个 TargetMustBeDamagedRule
         if (runtimeCard.Data.customRequirements != null)
         {
@@ -245,17 +234,39 @@ public class GameManager : MonoBehaviour
         
         var caster = runtimeCard.Owner;
 
-        // 3. 构建上下文
+        // 构建上下文
         var ctx = new EffectContext(caster, target, runtimeCard);
-    
-        var stateManager = caster.GetComponent<CharacterStateManager>();
+        
+        // 【介入阶段】全局光环/被动触发 (Passive Effects)
+        foreach (var unit in allUnits)
+        {
+            // 过滤死人
+            if (unit == null || unit.currentHealth <= 0) continue;
+
+            // 检查该单位是否有被动技能配置
+            if (unit.cardData != null && unit.cardData.passives != null)
+            {
+                foreach (var passive in unit.cardData.passives)
+                {
+                    if (passive.ShouldTrigger(unit, caster))
+                    {
+                        // 触发钩子！
+                        // 比如 DoubleBattlecryPassive 会在这里把 ctx.repeatCount += 1
+                        passive.OnPlayCard(unit, ctx);
+                    }
+                }
+            }
+        }
+        
         // 4. ✨ 核心：触发 "OnPlayCard" 钩子
         // 这里会自动处理：双倍施法叠加次数、减费Buff消耗
+        var stateManager = caster.GetComponent<CharacterStateManager>();
         if (stateManager != null)
         {
             stateManager.OnPlayCard(ctx);
         }
 
+      
         
         StartCoroutine(PlayCardRoutine(ctx));
         return true;
@@ -330,10 +341,8 @@ public class GameManager : MonoBehaviour
 
         return livingEnemies.Count > 0 ? livingEnemies[Random.Range(0, livingEnemies.Count)] : null;
     }
-    
-    // --- 光环系统核心方法 ---
 
-    // 1. 全局刷新：只要场面变了就调用它
+    // 全局刷新：只要场面变了就调用它
     public void OnBoardChanged()
     {
         
@@ -344,37 +353,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // 2. 查询接口：CharacterBase 用它来问“我有啥光环？”
-    public List<AuraEffect> GetActiveAurasFor(CharacterBase target)
-    {
-        var result = new List<AuraEffect>();
-        // 遍历全场所有活人
-        
-        foreach (var provider in allUnits)
-        {
-            if (provider == null) continue;
-
-            // 如果这个提供者被沉默了，就跳过 (未来扩展)
-            // if (provider.isSilenced) continue;
-
-            // 检查提供者身上带不带光环定义
-            if (provider.cardData != null && provider.cardData.auraEffects != null)
-            {
-                foreach (var aura in provider.cardData.auraEffects)
-                {
-                    // 检查这光环能不能套在 target 身上
-                    if (aura.IsApplicable(provider, target))
-                    {
-                        result.Add(aura);
-                    }
-                }
-            }
-        }
-        return result;
-    }
     
-    
-    // --- 新增：重启游戏 (绑定给按钮) ---
     public void OnRestartButton() {
         // 重新加载当前场景
         // SceneManager.LoadScene(SceneManager.GetActiveScene().name);

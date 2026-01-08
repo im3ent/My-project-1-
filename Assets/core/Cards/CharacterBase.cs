@@ -162,18 +162,22 @@ public class CharacterBase : MonoBehaviour
         if (isDying) return;
         // 1. 先重置回基础值 (把之前的光环全忘掉)
         var oldMaxHealth = currentMaxHealth;
-        currentAttack = baseAttack;
-        currentMaxHealth = baseMaxHealth;
-
-        // 2. 问 GameManager：现在谁罩着我？
-        var activeAuras = GameManager.Instance.GetActiveAurasFor(this);
         
-        // 3. 累加所有光环
-        foreach (var aura in activeAuras)
+        var stateManager = GetComponent<CharacterStateManager>();
+        if (stateManager != null)
         {
-            currentAttack += aura.attackBuff;
-            currentMaxHealth += aura.healthBuff;
+            // ✨✨✨ 核心变化：直接问管家要最终结果 ✨✨✨
+            // 管家已经把 基础值 + Buff + 光环 全部算好了
+            currentAttack = stateManager.GetCalculatedAttack(baseAttack);
+            currentMaxHealth = stateManager.GetCalculatedMaxHealth(baseMaxHealth);
         }
+        else
+        {
+            // 兜底：如果没有管理器，就等于基础值
+            currentAttack = baseAttack;
+            currentMaxHealth = baseMaxHealth;
+        }
+        
 
         // 4. 处理血量变化的特殊逻辑 (炉石规则)
         // 如果获得了生命值光环，当前血量也增加
