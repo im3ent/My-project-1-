@@ -278,24 +278,19 @@ public class GameManager : MonoBehaviour
     // ✨ 核心辅助方法：输入基础伤害，输出最终伤害
     public int GetModifiedDamage(RuntimeCard card, int baseDamage)
     {
-        // 如果还没重构 CharacterStateManager，这里可能还是 GetComponent
         var stateManager = card.Owner.GetComponent<CharacterStateManager>();
-        int finalDamage = baseDamage;
+    
+        // 如果没有状态管理器，直接返回基础值
+        if (stateManager == null) return baseDamage;
 
-        // A. 先算人物属性加成 (力量/法强)
-        if (stateManager != null)
-        {
-            finalDamage = stateManager.GetModifiedOutgoingDamage(finalDamage);
-        
-            // 如果法强是独立逻辑，也可以在这里单独加
-            // if (card.Data.cardType == CardType.Spell) finalDamage += stateManager.GetSpellPower();
-        }
-
-        // B. 再算卡牌自身的动态加成 (这才是 RuntimeCard 的精髓！)
-        // 假设 RuntimeCard 里有个 damageModifier 字段 (比如被附魔了)
-        // finalDamage += card.damageModifier; 
-
-        return finalDamage;
+        // ✨ 分流逻辑：
+        // 1. 如果是【法术卡】，走专门的法术伤害计算流程 (支持 SpellPower, SpellMultiplier)
+        return card.Data.cardType == CardType.Spell ?
+            // 这就是我们之前辛苦写的那个方法！
+            stateManager.GetModifiedSpellDamage(baseDamage, card) :
+            // 2. 如果是【随从战吼】或【武器】，通常只受通用增伤影响 (比如 "造成的伤害翻倍")
+            // (当然，如果你想让战吼也吃法强，可以把上面的 if 去掉，或者改条件)
+            stateManager.GetModifiedOutgoingDamage(baseDamage);
     }
     
     // 获取某张卡当前的实际费用
