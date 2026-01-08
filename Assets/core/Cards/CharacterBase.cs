@@ -68,6 +68,24 @@ public class CharacterBase : MonoBehaviour
         currentHealth = baseMaxHealth; // 出生满血
         currentAttack = baseAttack;
         
+        // ✨✨✨ 新增：应用自带状态 (Innate Statuses) ✨✨✨
+        if (cardData.initialStatuses is { Count: > 0 })
+        {
+            // 必须先获取管理器
+            var stateManager = GetComponent<CharacterStateManager>();
+            if (stateManager != null)
+            {
+                foreach (var config in cardData.initialStatuses)
+                {
+                    if (config.status != null)
+                    {
+                        // 给刚出生的随从贴上 Buff
+                        stateManager.ApplyStatus(config.status, config.stacks);
+                    }
+                }
+            }
+        }
+        
         isInitialized = true;
         RefreshStats();
     }

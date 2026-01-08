@@ -13,17 +13,16 @@ public class RandomDamageEffect : CardEffect {
     public DamageType damageType = DamageType.Magical;
 
     public override float Execute(EffectContext ctx) {
-        // 注意：这里的 target 参数通常是 null，因为这种卡不需要拖拽瞄准
-        
-        for (var i = 0; i < repeatCount; i++) {
-            // 1. 每一次攻击前，都重新找一个活着的随机敌人 (这样如果第一发把怪打死了，第二发就不会鞭尸，或者转向其他怪)
-            var randomEnemy = GameManager.Instance.GetRandomEnemy();
+        // 1. ✨ 先计算最终伤害 (应用法强、Buff)
+        // 注意：只算一次就行，不需要在循环里算
+        int finalDamage = GameManager.Instance.GetModifiedDamage(ctx.sourceRuntimeCard, value);
 
+        for (var i = 0; i < repeatCount; i++) {
+            var randomEnemy = GameManager.Instance.GetRandomEnemy();
             if (randomEnemy == null) continue;
-            // 2. 打包伤害
-            var info = new DamageInfo(value, damageType, ctx.caster);
-                
-            // 3. 造成伤害
+
+            // 2. ✨ 使用计算后的 finalDamage
+            var info = new DamageInfo(finalDamage, damageType, ctx.caster);
             randomEnemy.TakeDamage(info);
         }
         return animateDuration;

@@ -26,8 +26,21 @@ public class CardDefinition : ScriptableObject
     public List<CardEffect> onTurnEndEffects;
     public List<AuraEffect> auraEffects;
     
+    [Header("Innate Statuses (自带状态)")]
+    [Tooltip("随从出生时自动获得的状态 (如: 嘲讽, 圣盾)")]
+    public List<StatusConfig> initialStatuses; 
     [Header("needsTarget")]
     public bool needsTarget;
+    
+    [Header("打出限制条件")]
+    // 这张卡特有的条件，比如"目标必须受伤"
+    public List<PlayRule> customRequirements;
 }
 
 public enum CardType { Minion, Spell, Weapon }
+[System.Serializable]
+public class StatusConfig
+{
+    public StatusEffect status; // 拖入你的 StatusEffect 资源 (如 TauntBuff)
+    public int stacks = 1;      // 层数 (默认1)
+}

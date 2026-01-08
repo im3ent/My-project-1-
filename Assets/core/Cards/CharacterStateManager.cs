@@ -11,7 +11,7 @@ public class CharacterStateManager : MonoBehaviour
 
     [Header("当前状态列表")]
     // 所有的 Buff/Debuff 都在这里
-    public List<StatusInstance> statusList = new List<StatusInstance>();
+    public List<StatusInstance> statusList = new();
 
     // 事件：UI 监听这个来刷新图标
     public event Action OnStateChanged;
@@ -32,6 +32,13 @@ public class CharacterStateManager : MonoBehaviour
     /// <param name="stacks">层数</param>
     public void ApplyStatus(StatusEffect effectData, int stacks)
     {
+        // ✨ 安全检查：防止传入 null 导致后续崩溃
+        if (effectData == null)
+        {
+            Debug.LogError($"[CharacterStateManager] ApplyStatus called with null effectData on {ownerCharacter?.name ?? "Unknown"}!");
+            return;
+        }
+
         // 1. 检查是否已经有了这个状态
         var existing = statusList.FirstOrDefault(s => s.Data.id == effectData.id);
 
@@ -90,6 +97,13 @@ public class CharacterStateManager : MonoBehaviour
 
         foreach (var status in statusList)
         {
+            // ✨ 防御性检查：跳过损坏的 StatusInstance
+            if (status.Data == null)
+            {
+                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Skipping...");
+                continue;
+            }
+
             // 让每个 Buff 有机会修改费用
             // 需要 StatusEffect 定义: virtual int ModifyCost(...)
             finalCost = status.Data.ModifyCost(status, card, finalCost);
@@ -108,6 +122,13 @@ public class CharacterStateManager : MonoBehaviour
 
         foreach (var status in statusList)
         {
+            // ✨ 防御性检查
+            if (status.Data == null)
+            {
+                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Skipping...");
+                continue;
+            }
+
             // 让每个 Buff 有机会修改输出伤害
             // 需要 StatusEffect 定义: virtual int ModifyOutgoingDamage(...)
             finalDamage = status.Data.ModifyOutgoingDamage(status, finalDamage);
@@ -126,6 +147,13 @@ public class CharacterStateManager : MonoBehaviour
 
         foreach (var status in statusList)
         {
+            // ✨ 防御性检查
+            if (status.Data == null)
+            {
+                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Skipping...");
+                continue;
+            }
+
             // 让每个 Buff 有机会修改受到的伤害
             // 需要 StatusEffect 定义: virtual int ModifyIncomingDamage(...)
             finalDamage = status.Data.ModifyIncomingDamage(status, finalDamage);
@@ -147,6 +175,13 @@ public class CharacterStateManager : MonoBehaviour
         for (int i = statusList.Count - 1; i >= 0; i--)
         {
             var instance = statusList[i];
+            // ✨ 防御性检查
+            if (instance.Data == null)
+            {
+                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Removing corrupted instance...");
+                statusList.RemoveAt(i);
+                continue;
+            }
             instance.Data.OnTurnStart(instance);
         }
         
@@ -162,6 +197,14 @@ public class CharacterStateManager : MonoBehaviour
         for (int i = statusList.Count - 1; i >= 0; i--)
         {
             var instance = statusList[i];
+
+            // ✨ 防御性检查
+            if (instance.Data == null)
+            {
+                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Removing corrupted instance...");
+                statusList.RemoveAt(i);
+                continue;
+            }
 
             // 1. 执行 Buff 的回合结束逻辑 (比如炸弹倒计时)
             instance.Data.OnTurnEnd(instance);
@@ -187,6 +230,14 @@ public class CharacterStateManager : MonoBehaviour
         for (int i = statusList.Count - 1; i >= 0; i--)
         {
             var instance = statusList[i];
+            
+            // ✨ 防御性检查
+            if (instance.Data == null)
+            {
+                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Removing corrupted instance...");
+                statusList.RemoveAt(i);
+                continue;
+            }
             
             // 将 ctx 传进去，让 Buff 自己决定是否要修改 ctx (比如增加 repeatCount)
             // 以及是否要消耗自己

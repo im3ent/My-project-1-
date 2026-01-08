@@ -4,6 +4,7 @@ using TMPro;
 using System.Collections;
 using System.Collections.Generic;
 using DG.Tweening;
+using UnityEngine.Serialization;
 using Random = UnityEngine.Random;
 
 public class GameManager : MonoBehaviour
@@ -30,6 +31,8 @@ public class GameManager : MonoBehaviour
     [Header("生成点 (位置)")]
     public Transform enemySpawnZone; // 敌人在哪生成？
     public Transform allySpawnZone;  // 友军在哪生成？
+
+    public List<PlayRule> globalPlayRules = new();
     private void Awake()
     {
         Instance = this;
@@ -184,7 +187,7 @@ public class GameManager : MonoBehaviour
     private IEnumerator PlayCardRoutine(EffectContext ctx)
     {
         var card = ctx.SourceCard;
-        int totalCasts = 1 + ctx.repeatCount;
+        var totalCasts = 1 + ctx.repeatCount;
         // 执行所有“打出时”的效果
         // 关键点：这里是一个循环，不管你有 1 个技能还是 10 个技能，都会依次执行
         for (var i = 0; i < totalCasts; i++)
@@ -216,25 +219,36 @@ public class GameManager : MonoBehaviour
         OnBoardChanged();
     }
     
-    public void PlayCard(RuntimeCard runtimeCard, CharacterBase target)
+    public bool PlayCard(RuntimeCard runtimeCard, CharacterBase target)
     {
-        var caster = runtimeCard.Owner;
-        var cardData = runtimeCard.Data;
-
-        var stateManager = caster.GetComponent<CharacterStateManager>();
         
-        int finalCost = runtimeCard.Data.manaCost;
-        if (stateManager != null) 
+        // A. 先查“国法” (全局规则：有没有费，有没有被沉默)
+        foreach (var rule in globalPlayRules)
         {
-            finalCost = stateManager.GetCalculatedCost(runtimeCard);
+            var error = rule.Check(runtimeCard, target);
+            if (error == null) continue;
+            return false;
+        }
+        
+        // B. 再查“家规” (卡牌自己的特殊要求)
+        // 比如斩杀卡配置了一个 TargetMustBeDamagedRule
+        if (runtimeCard.Data.customRequirements != null)
+        {
+            foreach (var rule in runtimeCard.Data.customRequirements)
+            {
+                var error = rule.Check(runtimeCard, target);
+                if (error != null) {  return false; }
+            }
         }
 
-        // 扣费逻辑...
-        if (!TryUseMana(finalCost)) return; // 没钱直接退
+        UseMana(GetModifiedCost(runtimeCard));
+        
+        var caster = runtimeCard.Owner;
 
         // 3. 构建上下文
         var ctx = new EffectContext(caster, target, runtimeCard);
     
+        var stateManager = caster.GetComponent<CharacterStateManager>();
         // 4. ✨ 核心：触发 "OnPlayCard" 钩子
         // 这里会自动处理：双倍施法叠加次数、减费Buff消耗
         if (stateManager != null)
@@ -244,6 +258,7 @@ public class GameManager : MonoBehaviour
 
         
         StartCoroutine(PlayCardRoutine(ctx));
+        return true;
     }
     
 
@@ -276,7 +291,7 @@ public class GameManager : MonoBehaviour
     public int GetModifiedCost(RuntimeCard card)
     {
         var stateManager = card.Owner.GetComponent<CharacterStateManager>();
-        int cost = card.manaCost;
+        var cost = card.manaCost;
         if (stateManager != null)
         {
             cost = stateManager.GetCalculatedCost(card);
@@ -286,17 +301,12 @@ public class GameManager : MonoBehaviour
     }
     
      // --- 尝试扣费 ---
-    public bool TryUseMana(int cost) {
-        if (currentMana >= cost) {
-            currentMana -= cost;
-            UpdateManaUI();
-            return true;
-        } else {
-            Debug.LogWarning("法力值不足！需要: " + cost + ", 当前: " + currentMana);
-            return false;
-        }
-    }
-    
+     private void UseMana(int amount)
+     {
+         currentMana -= amount;
+         UpdateManaUI();
+         OnManaChanged?.Invoke();
+     }
 
    
 

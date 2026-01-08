@@ -25,18 +25,19 @@ public class DamageEffect : CardEffect
 
             // 3. 构建伤害信息包
             // (假设 DamageInfo 有对应的构造函数或字段)
-            var damageInfo = new DamageInfo(finalDamage, damageType, ctx.caster);
-            
-            // 如果你的 DamageInfo 有 ignoreArmor 字段，记得赋值
-            damageInfo.ignoreArmor = this.ignoreArmor;
+            var damageInfo = new DamageInfo(finalDamage, damageType, ctx.caster)
+            {
+                // 如果你的 DamageInfo 有 ignoreArmor 字段，记得赋值
+                ignoreArmor = this.ignoreArmor
+            };
 
             // 4. 执行扣血
             ctx.mainTarget.TakeDamage(damageInfo);
         }
         else
         {
-            // 如果需要 AOE 逻辑，可以在这里扩展，或者用 TargetType 区分
-            Debug.LogWarning($"DamageEffect 执行失败：没有目标。卡牌：{ctx.sourceRuntimeCard.Data.cardName}");
+            string cardName = ctx.sourceRuntimeCard != null ? ctx.sourceRuntimeCard.Data.cardName : "未知卡牌";
+            Debug.LogWarning($"DamageEffect 执行失败：没有目标。卡牌：{cardName}");
         }
 
         return animateDuration;
