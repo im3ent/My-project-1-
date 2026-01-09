@@ -3,7 +3,7 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "Buffs/Double Cast")]
 public class DoubleCastBuff : StatusEffect
 {
-    private void OnEnable() { id = "DoubleCast"; } // 确保 ID 唯一
+
 
     public override void OnPlayCard(StatusInstance instance, EffectContext ctx)
     {
@@ -18,4 +18,4 @@ public class DoubleCastBuff : StatusEffect
             instance.DecreaseStack(instance.Stacks); // 全部消耗
         }
     }
-}
+} 

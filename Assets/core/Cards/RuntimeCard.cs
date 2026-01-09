@@ -20,7 +20,7 @@ public class RuntimeCard
     // public bool isRevealed; 
 
     // 构造函数：出生时，把 Data 里的数据“抄”过来
-    public RuntimeCard(CardDefinition data, CharacterBase owner)
+    public  RuntimeCard(CardDefinition data, CharacterBase owner)
     {
         this.Data = data;
         this.Owner = owner;

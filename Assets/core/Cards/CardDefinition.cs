@@ -1,42 +1,45 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using System.Collections.Generic;
 
 [CreateAssetMenu(fileName = "NewCard", menuName = "GeminiStone/Card Definition")]
-public class CardDefinition : ScriptableObject
+public class CardDefinition: ScriptableObject
 {
     [Header("cardName")]
     public string cardName;
     [TextArea] public string description;
     public Sprite artwork;
-
+    public GameObject minionPrefab;
+    
     [Header("mana")]
     public int manaCost;
-
-
-    public CardType cardType; 
-    
-
-    public GameObject minionPrefab; 
     public int attack;
     public int health;
     
+    public CardType cardType;
+    
+    [Header("èƒŒåŒ…å ä½è®¾ç½®")]
+    [Tooltip("ç‰©å“å®½åº¦ (å å‡ åˆ—)")]
+    [Range(1, 4)] public int width = 1;
+
+    [Tooltip("ç‰©å“é«˜åº¦ (å å‡ è¡Œ)")]
+    [Range(1, 4)] public int height = 1;
     [Header("Card Effects")]
     public List<CardEffect> onPlayEffects;
     public List<CardEffect> onTurnStartEffects; 
     public List<CardEffect> onTurnEndEffects;
 
-    [Header("Passive Effects (¹â»·Âß¼­)")]
-    [Tooltip("Ëæ´ÓÔÚ³¡Ê±³ÖĞøÉúĞ§µÄÂß¼­Ğ§¹û (Èç: Õ½ºğË«±¶, ·¨Êõ¼õ·Ñ)")]
-    public List<PassiveEffect> passives; // 
+    [Header("Passive Effects (å…‰ç¯é€»è¾‘)")]
+    [Tooltip("éšä»åœ¨åœºæ—¶æŒç»­ç”Ÿæ•ˆçš„é€»è¾‘æ•ˆæœ (å¦‚: æˆ˜å¼åŒå€, æ³•æœ¯å‡è´¹)")]
+    public List<PassiveEffect> passives;
     
-    [Header("Innate Statuses (×Ô´ø×´Ì¬)")]
-    [Tooltip("Ëæ´Ó³öÉúÊ±×Ô¶¯»ñµÃµÄ×´Ì¬ (Èç: ³°·í, Ê¥¶Ü)")]
-    public List<StatusConfig> initialStatuses; 
+    [Header("Innate Statuses (è‡ªå¸¦çŠ¶æ€)")]
+    [Tooltip("éšä»å‡ºç”Ÿæ—¶è‡ªåŠ¨è·å¾—çš„çŠ¶æ€ (å¦‚: å˜²è®½, åœ£ç›¾)")]
+    //public List<StatusConfig> initialStatuses; 
     [Header("needsTarget")]
     public bool needsTarget;
     
-    [Header("´ò³öÏŞÖÆÌõ¼ş")]
-    // ÕâÕÅ¿¨ÌØÓĞµÄÌõ¼ş£¬±ÈÈç"Ä¿±ê±ØĞëÊÜÉË"
+    [Header("æ‰“å‡ºé™åˆ¶æ¡ä»¶")]
+    // è¿™å¼ å¡ç‰¹æœ‰çš„æ¡ä»¶ï¼Œæ¯”å¦‚"ç›®æ ‡å¿…é¡»å—ä¼¤"
     public List<PlayRule> customRequirements;
 }
 
@@ -44,6 +47,6 @@ public enum CardType { Minion, Spell, Weapon }
 [System.Serializable]
 public class StatusConfig
 {
-    public StatusEffect status; // ÍÏÈëÄãµÄ StatusEffect ×ÊÔ´ (Èç TauntBuff)
-    public int stacks = 1;      // ²ãÊı (Ä¬ÈÏ1)
+    public StatusEffect status; // æ‹–å…¥ä½ çš„ StatusEffect èµ„æº (å¦‚ TauntBuff)
+    public int stacks = 1;      // å±‚æ•° (é»˜è®¤1)
 }

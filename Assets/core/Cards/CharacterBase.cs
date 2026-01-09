@@ -70,7 +70,7 @@ public class CharacterBase : MonoBehaviour
         currentAttack = baseAttack;
         
         // ✨✨✨ 新增：应用自带状态 (Innate Statuses) ✨✨✨
-        if (cardData.initialStatuses is { Count: > 0 })
+        /*if (cardData.initialStatuses is { Count: > 0 })
         {
             // 必须先获取管理器
             var stateManager = GetComponent<CharacterStateManager>();
@@ -85,7 +85,7 @@ public class CharacterBase : MonoBehaviour
                     }
                 }
             }
-        }
+        }*/
         
         isInitialized = true;
         RefreshStats();

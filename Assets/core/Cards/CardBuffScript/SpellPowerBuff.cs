@@ -3,8 +3,7 @@ using UnityEngine;
 public class SpellPowerBuff : StatusEffect
 {
     public int amountPerStack = 1;
-    private void OnEnable() { base.OnEnable();
-        id = "SpellPowerBuff"; } // 确保 ID 唯一
+
 
     public override int GetSpellDamageAdditive(StatusInstance instance)
     {
