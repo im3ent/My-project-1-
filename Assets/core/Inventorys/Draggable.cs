@@ -10,9 +10,8 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     private InventoryItem item;
     private Transform originalParent;
     // ✨ 新增：记录鼠标点击点和物品中心点的距离
-    private Vector2 touchOffset;
-    // 用于记录是否已经成功处理了放置（防止重复逻辑）
-    private bool isProcessed = false;
+    private protected Vector2 touchOffset;
+
 
     private void Awake()
     {
@@ -21,10 +20,8 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         item = GetComponent<InventoryItem>();
     }
 
-    public void OnBeginDrag(PointerEventData eventData)
+    public virtual void OnBeginDrag(PointerEventData eventData)
     {
-        isProcessed = false;
-        
         // 记录原始父物体（以防万一需要回滚，虽然现在主要靠 Manager）
         originalParent = transform.parent;
         
@@ -47,9 +44,11 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         transform.SetParent(transform.root); 
         canvasGroup.blocksRaycasts = false; // 允许射线穿透物品检测到底下的格子
         canvasGroup.alpha = 0.6f;
+        
+        InventoryManager.Instance.ClearGrid(item.anchorSlotIndex, item.width, item.height, item);
     }
 
-    public void OnDrag(PointerEventData eventData)
+    public virtual void OnDrag(PointerEventData eventData)
     {
         // 移动时，不是把物品中心直接设为鼠标位置
         // 而是：目标位置 = 鼠标位置 - 刚才记录的偏移
@@ -63,74 +62,41 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         );
             
         rectTransform.anchoredPosition = localMousePos - touchOffset;
+        
+        int bestIndex = GetCurrentGridIndex(); // 获取当前瞄准的格子
+        InventoryManager.Instance.UpdateShadow(bestIndex, item.width, item.height);
     }
 
-    public void OnEndDrag(PointerEventData eventData)
+    public virtual void OnEndDrag(PointerEventData eventData)
     {
         canvasGroup.blocksRaycasts = true;
         canvasGroup.alpha = 1.0f;
 
-        // ✨✨✨ 核心：主动探测逻辑 ✨✨✨
-        // 不再等待 InventorySlot 的 OnDrop，而是自己主动去找
-        
-        int bestTargetIndex = DetectBestGridPosition();
+        // ✨ 隐藏虚影
+        InventoryManager.Instance.HideShadow();
+        // ✨✨✨ 新增：检测是否扔进了售卖区 ✨✨✨
+        SellZone sellZone = RaycastForSellZone(eventData.position);
+        if (sellZone != null)
+        {
+            SellItem();
+            return; // 卖掉了就直接结束，不用再找格子了
+        }
+        // 获取最终位置
+        int bestTargetIndex = GetCurrentGridIndex();
 
         if (bestTargetIndex != -1)
         {
-            // 找到了有效位置，通知管理器尝试放置
-            // Manager 内部会判断 CanPlaceItem，如果能放就放，不能放会自动回滚
             InventoryManager.Instance.OnItemDropped(item, bestTargetIndex);
         }
         else
         {
-            // 没找到任何格子（扔到了空地），直接回滚
-            Debug.Log("未检测到有效格子，回滚");
             InventoryManager.Instance.PlaceItem(item, item.anchorSlotIndex);
         }
     }
 
-    // --- 多点探测算法 ---
-    private int DetectBestGridPosition()
-    {
-        if (item == null) return -1;
-
-        // 1. 获取物品尺寸和格子大小
-        var width = rectTransform.rect.width;
-        var height = rectTransform.rect.height;
-        var cellW = width / item.width;
-        var cellH = height / item.height;
-
-        // 2. 遍历物品的每一个"子格"
-        for (int x = 0; x < item.width; x++)
-        {
-            for (int y = 0; y < item.height; y++)
-            {
-                // A. 计算当前子格中心的世界坐标
-                // 假设 Pivot 是中心点 (0.5, 0.5)
-                float localX = -width * 0.5f + (x + 0.5f) * cellW;
-                float localY = height * 0.5f - (y + 0.5f) * cellH; // UI坐标系Y轴向上，但Grid通常向下，这里注意方向
-                
-                Vector3 worldPos = rectTransform.TransformPoint(new Vector3(localX, localY, 0));
-
-                // B. 发射射线寻找 InventorySlot
-                InventorySlot hitSlot = RaycastForSlot(worldPos);
-
-                if (hitSlot != null)
-                {
-                    // 如果物品的第 (x, y) 格命中了 Slot N
-                    // 那么物品的左上角 (0, 0) 应该对齐到 Slot [N - x列 - y行]
-                    int finalIndex = CalculateAnchorIndex(hitSlot.slotIndex, x, y);
-                    
-                    // 只要有一个点命中了合法位置，我们就认为意图明确，直接返回这个结果
-                    if (finalIndex != -1) return finalIndex;
-                }
-            }
-        }
-        return -1;
-    }
 
     // 射线检测辅助方法
-    private InventorySlot RaycastForSlot(Vector3 worldPos)
+    private protected InventorySlot RaycastForSlot(Vector3 worldPos)
     {
         PointerEventData pointerData = new PointerEventData(EventSystem.current);
         // 注意：如果是 Overlay 模式，Camera 传 null；如果是 Camera 模式，传 UICamera
@@ -148,7 +114,7 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     }
 
     // 计算反推的左上角索引
-    private int CalculateAnchorIndex(int hitIndex, int colOffset, int rowOffset)
+    private protected int CalculateAnchorIndex(int hitIndex, int colOffset, int rowOffset)
     {
         int columns = InventoryManager.Instance.columns;
         
@@ -165,9 +131,73 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         return targetRow * columns + targetCol;
     }
     
-    // 给外部调用的成功回调（如果有其他脚本需要）
-    public void OnDropSuccess()
+    // ✨ 将之前的 DetectBestGridPosition 改名为这个，只负责返回 int，不处理逻辑
+    protected int GetCurrentGridIndex(RectTransform targetRect, int w, int h)
     {
-        isProcessed = true;
+        if (item == null) return -1;
+
+        float width = targetRect.rect.width;
+        float height = targetRect.rect.height;
+        float cellW = width / item.width;
+        float cellH = height / item.height;
+
+        for (int x = 0; x < item.width; x++)
+        {
+            for (int y = 0; y < item.height; y++)
+            {
+                float localX = -width * 0.5f + (x + 0.5f) * cellW;
+                float localY = height * 0.5f - (y + 0.5f) * cellH;
+            
+                Vector3 worldPos = rectTransform.TransformPoint(new Vector3(localX, localY, 0));
+                InventorySlot hitSlot = RaycastForSlot(worldPos);
+
+                if (hitSlot != null)
+                {
+                    int finalIndex = CalculateAnchorIndex(hitSlot.slotIndex, x, y);
+                    // 只要找到了合法的左上角锚点，就立即返回
+                    if (finalIndex != -1) return finalIndex;
+                }
+            }
+        }
+        return -1;
+    }
+    private protected int GetCurrentGridIndex()
+    {
+        return GetCurrentGridIndex(this.rectTransform, item.width, item.height);
+    }
+    
+    // ✨ 处理售卖逻辑
+    private void SellItem()
+    {
+        if (item != null && item.runtimeCard != null)
+        {
+            // 1. 加钱
+            MoneyManager.Instance.AddGold(item.runtimeCard.Data.price);
+            
+            // 2. 从背包数据里彻底清除
+            // InventoryManager 现在的 ClearGrid 只是清空引用，我们需要一个彻底移除的方法
+            InventoryManager.Instance.RemoveItem(item); 
+        
+            // 3. 销毁物体
+            Destroy(gameObject);
+
+        }
+    }
+
+// ✨ 射线检测售卖区 (和找格子类似，但只找 SellZone)
+    private SellZone RaycastForSellZone(Vector2 screenPos)
+    {
+        PointerEventData pointerData = new PointerEventData(EventSystem.current);
+        pointerData.position = screenPos;
+
+        List<RaycastResult> results = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointerData, results);
+
+        foreach (var result in results)
+        {
+            var zone = result.gameObject.GetComponent<SellZone>();
+            if (zone != null) return zone;
+        }
+        return null;
     }
 }

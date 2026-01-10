@@ -18,11 +18,11 @@ public class CardDefinition: ScriptableObject
     public CardType cardType;
     
     [Header("背包占位设置")]
-    [Tooltip("物品宽度 (占几列)")]
     [Range(1, 4)] public int width = 1;
-
-    [Tooltip("物品高度 (占几行)")]
     [Range(1, 4)] public int height = 1;
+    [Header("经济数据")]
+    public int price = 100; // 买入价格
+    
     [Header("Card Effects")]
     public List<CardEffect> onPlayEffects;
     public List<CardEffect> onTurnStartEffects; 

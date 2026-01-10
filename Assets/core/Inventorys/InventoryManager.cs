@@ -17,9 +17,13 @@ public class InventoryManager : MonoBehaviour
     public GameObject slotPrefab;   // 格子预制体
     public GameObject itemPrefab;   // 物品预制体
 
-    [Header("测试数据")]
-    public List<CardDefinition> d; // 你的测试卡牌数据
 
+
+    [Header("虚影设置")]
+    public Image shadowImage; // 拖拽一下你的 GridContainer 里随便一个 Slot 的 Image 赋值给它，或者由代码生成
+    public Color validColor = new Color(0, 1, 0, 0.5f); // 绿色半透明 (能放)
+    public Color invalidColor = new Color(1, 0, 0, 0.5f); // 红色半透明 (不能放)
+    
     // 运行时数据
     private InventoryItem[] gridStates;
     // 注意：这里改成 public 方便 Draggable 访问，或者写个只读属性
@@ -39,18 +43,8 @@ public class InventoryManager : MonoBehaviour
     private void Start()
     {
         // 尝试初始化 (如果还没被 AddItem 触发过)
-        if (!isInitialized)
-        {
-            InitSystem();
-            // 生成测试物品
-            if (d != null)
-            {
-                foreach (var ds in d)
-                {
-                    AddItem(new RuntimeCard(ds, null));
-                }
-            }
-        }
+        if (isInitialized) return;
+        InitSystem();
     }
 
     // --- 核心初始化系统 ---
@@ -196,9 +190,7 @@ public class InventoryManager : MonoBehaviour
             // 成功：去新家
             PlaceItem(item, targetIndex);
             
-            // 发回执：告诉 Draggable 成功了，别回滚
-            var drag = item.GetComponent<Draggable>();
-            if (drag) drag.OnDropSuccess();
+
         }
         else
         {
@@ -241,7 +233,7 @@ public class InventoryManager : MonoBehaviour
     // --- 辅助功能 ---
     
     // 清理网格占用
-    private void ClearGrid(int startIndex, int w, int h, InventoryItem itemToClear)
+    public void ClearGrid(int startIndex, int w, int h, InventoryItem itemToClear)
     {
         if (startIndex < 0) return;
 
@@ -265,8 +257,8 @@ public class InventoryManager : MonoBehaviour
     {
         if (!isInitialized) InitSystem();
 
-        int w = (card.Data != null) ? card.Data.width : 1;
-        int h = (card.Data != null) ? card.Data.height : 1;
+        var w = (card.Data != null) ? card.Data.width : 1;
+        var h = (card.Data != null) ? card.Data.height : 1;
 
         // 寻找第一个能放下的位置
         for (int i = 0; i < totalSlots; i++)
@@ -286,7 +278,128 @@ public class InventoryManager : MonoBehaviour
         return false;
     }
 
+
+    public void RemoveItem(InventoryItem item)
+    {
+        // 1. 清空它在网格里的占用
+        ClearGrid(item.anchorSlotIndex, item.width, item.height, item);
+    
+        // 2. 如果你有列表维护所有物品，在这里 Remove
+        // ...
+    
+        // 3. 如果有音效播放，可以在这里写
+    }
+
     // 坐标转换工具
     public Vector2Int GetCoord(int index) => new Vector2Int(index % columns, index / columns);
     public int GetIndex(int x, int y) => y * columns + x;
+    
+    private void CreateShadow()
+{
+    if (shadowImage == null)
+    {
+        GameObject shadowObj = new GameObject("DragShadow");
+        shadowObj.transform.SetParent(itemContainer); // 必须和物品在同一层
+        shadowObj.transform.SetAsFirstSibling(); // 放在最底层，不要挡住拖拽的物品
+        shadowImage = shadowObj.AddComponent<Image>();
+        shadowImage.raycastTarget = false; // ✨ 关键：虚影绝对不能阻挡射线！
+        shadowImage.enabled = false;
+        
+        // 复制格子的外观 (可选)
+        // if(slotPrefab != null) shadowImage.sprite = slotPrefab.GetComponent<Image>().sprite;
+    }
+}
+
+// --- 虚影控制方法 ---
+// 在 InventoryManager.cs 中
+
+    public void UpdateShadow(int targetIndex, int width, int height)
+{
+    if (shadowImage == null) CreateShadow();
+
+    // 1. 基础检查：索引是否存在
+    if (targetIndex < 0 || targetIndex >= totalSlots)
+    {
+        shadowImage.enabled = false;
+        return;
+    }
+
+    // ✨✨✨ 新增：严格边界检查 (核心修改) ✨✨✨
+    // 如果物品超出了右边界或下边界，直接隐藏虚影，而不是显示红色
+    if (IsOutOfBounds(targetIndex, width, height))
+    {
+        shadowImage.enabled = false;
+        return;
+    }
+
+    // 2. 通过了边界检查，说明物品完全在格子范围内
+    // 现在显示虚影，并根据是否重叠来决定颜色 (绿/红)
+    shadowImage.enabled = true;
+
+    // 设置大小
+    float totalW = width * cellSize.x + (width - 1) * spacing.x;
+    float totalH = height * cellSize.y + (height - 1) * spacing.y;
+    shadowImage.rectTransform.sizeDelta = new Vector2(totalW, totalH);
+
+    // 设置位置
+    if (targetIndex < slotRects.Count)
+    {
+        RectTransform slotRect = slotRects[targetIndex];
+        Vector3 targetLocalPos = itemContainer.InverseTransformPoint(slotRect.position);
+        
+        // 中心点偏移修正
+        if (width > 1 || height > 1)
+        {
+            float offsetX = (width - 1) * (cellSize.x + spacing.x) * 0.5f;
+            float offsetY = -(height - 1) * (cellSize.y + spacing.y) * 0.5f;
+            targetLocalPos += new Vector3(offsetX, offsetY, 0);
+        }
+        shadowImage.rectTransform.localPosition = targetLocalPos;
+        shadowImage.rectTransform.localScale = Vector3.one;
+    }
+
+    // 设置颜色
+    // 因为前面已经检查过边界了，CanPlaceItem 现在的 false 只代表“被占用”
+    bool canPlace = CanPlaceItem(targetIndex, width, height);
+    shadowImage.color = canPlace ? validColor : invalidColor;
+}
+
+// ✨ 辅助方法：检查是否出界
+    private bool IsOutOfBounds(int targetIndex, int width, int height)
+{
+    Vector2Int pos = GetCoord(targetIndex);
+
+    // A. 检查右边界 (比如在第5列放了个宽2的物品)
+    if (pos.x + width > columns) return true;
+
+    // B. 检查下边界 (检查物品右下角那个格子是否存在)
+    // 计算右下角的坐标
+    int endX = pos.x + width - 1;
+    int endY = pos.y + height - 1;
+    
+    // 算出右下角的索引
+    int cornerIndex = GetIndex(endX, endY);
+
+    // 如果右下角索引超过了总格子数，说明下面出界了
+    if (cornerIndex >= totalSlots) return true;
+
+    return false;
+}
+
+    public void HideShadow()
+    {
+        if (shadowImage != null) shadowImage.enabled = false;
+    }
+    
+    // 在 InventoryManager.cs 中
+
+    public void CreateItemAt(RuntimeCard card, int slotIndex)
+    {
+        GameObject obj = Instantiate(itemPrefab, itemContainer);
+        var script = obj.GetComponent<InventoryItem>();
+        script.Initialize(card);
+    
+        // 直接调用 PlaceItem 把它按死在那个格子上
+        PlaceItem(script, slotIndex);
+    }
 }
