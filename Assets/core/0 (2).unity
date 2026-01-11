@@ -3018,6 +3018,8 @@ MonoBehaviour:
   allItemPool:
   - {fileID: 11400000, guid: ca29d7d147a44a146afd8cdaf79522b2, type: 2}
   - {fileID: 11400000, guid: d7f2b0ff70405fe48bef631bf3f6284e, type: 2}
+  - {fileID: 11400000, guid: 35d306c3aee98e94bad8d1ab1124ceca, type: 2}
+  - {fileID: 11400000, guid: 8cf853c373cca6e4b85b2a992819f6a7, type: 2}
   shopSize: 5
   refreshCost: 50
 --- !u!4 &1170675272
