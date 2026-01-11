@@ -20,6 +20,9 @@ public class CardDefinition: ScriptableObject
     [Header("背包占位设置")]
     [Range(1, 4)] public int width = 1;
     [Range(1, 4)] public int height = 1;
+    // 如果列表为空，代码会自动按照 width * height 生成标准矩形
+    public List<Vector2Int> shapeOffsets = new();
+    
     [Header("经济数据")]
     public int price = 100; // 买入价格
     

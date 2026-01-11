@@ -62,9 +62,9 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         );
             
         rectTransform.anchoredPosition = localMousePos - touchOffset;
-        
-        int bestIndex = GetCurrentGridIndex(); // 获取当前瞄准的格子
-        InventoryManager.Instance.UpdateShadow(bestIndex, item.width, item.height);
+        var shape = (item != null) ? item.shapeOffsets : null;
+        //int bestIndex = GetCurrentGridIndex(); // 获取当前瞄准的格子
+        //InventoryManager.Instance.UpdateShadow(bestIndex, item.width, item.height, item.runtimeCard.Data.artwork, shape);
     }
 
     public virtual void OnEndDrag(PointerEventData eventData)

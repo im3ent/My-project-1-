@@ -23,7 +23,7 @@ public class ShopItem : MonoBehaviour
         itemToSell = data;
 
         
-        // if(iconImage != null) iconImage.sprite = data.icon;
+        iconImage.sprite = data.artwork;
         if(nameText != null) nameText.text = data.cardName;
         if(priceText != null) priceText.text = $"${data.price}";
         

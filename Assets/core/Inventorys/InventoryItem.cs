@@ -1,4 +1,6 @@
 // 文件路径：Assets/core/Inventory/InventoryItem.cs
+
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -13,7 +15,7 @@ public class InventoryItem : MonoBehaviour
     public int width = 1;
     public int height = 1;
     public int anchorSlotIndex; // 物品左上角所在的格子索引
-
+    public List<Vector2Int> shapeOffsets = new();
     /// <summary>
     /// 初始化物品：注入数据并调整 UI 尺寸
     /// </summary>
@@ -26,6 +28,7 @@ public class InventoryItem : MonoBehaviour
         {
             width = inventory.Data.width;
             height = inventory.Data.height;
+            shapeOffsets =  inventory.Data.shapeOffsets;
         }
 
         // 2. 刷新卡面显示 (攻击力、图片等)

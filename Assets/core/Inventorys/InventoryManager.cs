@@ -127,16 +127,17 @@ public class InventoryManager : MonoBehaviour
         item.anchorSlotIndex = targetIndex;
 
         // 2. 锁定格子：在逻辑网格中标记占用
-        Vector2Int startPos = GetCoord(targetIndex);
-        for (int x = 0; x < item.width; x++)
+        List<Vector2Int> shape = null;
+        if (item != null) shape = item.shapeOffsets;
+        var pointsToOccupy = GetEffectiveShape(item.width, item.height, shape);
+        var startCoord = GetCoord(targetIndex);
+        // 标记占用
+        foreach (Vector2Int point in pointsToOccupy)
         {
-            for (int y = 0; y < item.height; y++)
+            var idx = GetIndex(startCoord.x + point.x, startCoord.y + point.y);
+            if (idx >= 0 && idx < totalSlots)
             {
-                int idx = GetIndex(startPos.x + x, startPos.y + y);
-                if (idx >= 0 && idx < totalSlots) 
-                {
-                    gridStates[idx] = item;
-                }
+                gridStates[idx] = item;
             }
         }
 
@@ -188,58 +189,75 @@ public class InventoryManager : MonoBehaviour
     }
 
     // --- 核心功能 3: 检查能否放置 ---
-    public bool CanPlaceItem(int startIndex, int width, int height)
+    public bool CanPlaceItem(int startIndex, int width, int height,List<Vector2Int> shape = null)
     {
         // 1. 负数索引直接拦截
         if (startIndex < 0 || startIndex >= totalSlots) return false;
 
-        Vector2Int startPos = GetCoord(startIndex);
+        var startPos = GetCoord(startIndex);
 
-        for (int x = 0; x < width; x++)
+        // 获取实际要检测的点列表
+        var pointsToCheck = GetEffectiveShape(width, height, shape);
+        
+        foreach (Vector2Int point in pointsToCheck)
         {
-            for (int y = 0; y < height; y++)
-            {
-                int cx = startPos.x + x;
-                int cy = startPos.y + y;
+            // 计算绝对坐标
+            int targetX = startPos.x + point.x;
+            int targetY = startPos.y + point.y;
 
-                // 2. 越界检查：列超出了 (比如在最右边放了个宽物品)
-                if (cx >= columns) return false;
-                
-                int idx = GetIndex(cx, cy);
+            // 1. 越界检查 (是否超出了 Grid 的列数)
+            if (targetX < 0 || targetX >= columns) return false;
+        
+            // 2. 越界检查 (是否超出了总行数/总格子)
+            int idx = GetIndex(targetX, targetY);
+            if (idx < 0 || idx >= totalSlots) return false;
 
-                // 3. 越界检查：总数超出了
-                if (idx < 0 || idx >= totalSlots) return false;
-
-                // 4. 占用检查：位置不是空的 (gridStates[idx] != null)
-                if (gridStates[idx] != null) return false;
-            }
+            // 3. 占用检查 (是否撞到了别的物品)
+            if (gridStates[idx] != null) return false;
         }
         return true;
     }
 
     // --- 辅助功能 ---
-    
+    // 在 InventoryManager 类中新增
+    public List<Vector2Int> GetEffectiveShape(int w, int h, List<Vector2Int> customShape)
+    {
+        // 如果有自定义形状，直接返回
+        if (customShape != null && customShape.Count > 0) return customShape;
+
+        // 否则生成标准的矩形点阵
+        List<Vector2Int> standardShape = new List<Vector2Int>();
+        for (int x = 0; x < w; x++)
+        {
+            for (int y = 0; y < h; y++)
+            {
+                standardShape.Add(new Vector2Int(x, y));
+            }
+        }
+        return standardShape;
+    }
     // 清理网格占用
     public void ClearGrid(int startIndex, int w, int h, InventoryItem itemToClear)
     {
         if (startIndex < 0) return;
+        // 获取形状
+        List<Vector2Int> shape = null;
+        if (itemToClear.runtimeCard.Data != null) shape = itemToClear.runtimeCard.Data.shapeOffsets;
+    
+        List<Vector2Int> pointsToClear = GetEffectiveShape(w, h, shape);
+        Vector2Int startCoord = GetCoord(startIndex);
 
-        var startPos = GetCoord(startIndex);
-        for (var x = 0; x < w; x++)
+        foreach (Vector2Int point in pointsToClear)
         {
-            for (var y = 0; y < h; y++)
+            int idx = GetIndex(startCoord.x + point.x, startCoord.y + point.y);
+            if (idx >= 0 && idx < totalSlots && gridStates[idx] == itemToClear)
             {
-                int idx = GetIndex(startPos.x + x, startPos.y + y);
-                // 只有当格子里的东西确实是自己时才清空 (防止误删别人)
-                if (idx >= 0 && idx < totalSlots && gridStates[idx] == itemToClear)
-                {
-                    gridStates[idx] = null;
-                }
+                gridStates[idx] = null;
             }
         }
     }
 
-    // 添加新物品 (外部调用)
+    // Button添加物品
     public bool AddItem(RuntimeCard card)
     {
 
@@ -247,23 +265,35 @@ public class InventoryManager : MonoBehaviour
         var h = (card.Data != null) ? card.Data.height : 1;
 
         // 寻找第一个能放下的位置
-        for (int i = 0; i < totalSlots; i++)
+        for (var i = 0; i < totalSlots; i++)
         {
-            if (CanPlaceItem(i, w, h))
-            {
-                GameObject obj = Instantiate(itemPrefab, itemContainer);
-                var script = obj.GetComponent<InventoryItem>();
-                script.Initialize(card);
+            if (!CanPlaceItem(i, w, h)) continue;
+            var obj = Instantiate(itemPrefab, itemContainer);
+            var img = obj.GetComponent<Image>();
+            img.sprite = card.Data.artwork;
+            img.alphaHitTestMinimumThreshold = 0.1f;
+            var script = obj.GetComponent<InventoryItem>();
+            script.Initialize(card);
                 
-                // 放置并更新数据
-                PlaceItem(script, i);
-                return true;
-            }
+            // 放置并更新数据
+            PlaceItem(script, i);
+            return true;
         }
         Debug.Log("背包已满，无法添加物品");
         return false;
     }
+    //鼠标拖拽添加
+    public void CreateItemAt(RuntimeCard card, int slotIndex)
+    {
+        var obj = Instantiate(itemPrefab, itemContainer);
+        var img = obj.GetComponent<Image>();
+        img.sprite = card.Data.artwork;
+        img.alphaHitTestMinimumThreshold = 0.1f;
+        var script = obj.GetComponent<InventoryItem>();
+        script.Initialize(card);
 
+        PlaceItem(script, slotIndex);
+    }
 
     public void RemoveItem(InventoryItem item)
     {
@@ -276,10 +306,13 @@ public class InventoryManager : MonoBehaviour
         // 3. 如果有音效播放，可以在这里写
     }
 
+    
     // 坐标转换工具
     public Vector2Int GetCoord(int index) => new Vector2Int(index % columns, index / columns);
     public int GetIndex(int x, int y) => y * columns + x;
-    
+
+// --- 虚影控制方法 ---
+// 在 InventoryManager.cs 中
     private void CreateShadow()
 {
     if (shadowImage == null)
@@ -296,10 +329,8 @@ public class InventoryManager : MonoBehaviour
     }
 }
 
-// --- 虚影控制方法 ---
-// 在 InventoryManager.cs 中
-
-    public void UpdateShadow(int targetIndex, int width, int height)
+    public void UpdateShadow(int targetIndex, int width, int height, 
+        Sprite itemSprite = null, List<Vector2Int> shape = null)
 {
     if (shadowImage == null) CreateShadow();
 
@@ -309,8 +340,7 @@ public class InventoryManager : MonoBehaviour
         shadowImage.enabled = false;
         return;
     }
-
-    // ✨✨✨ 新增：严格边界检查 (核心修改) ✨✨✨
+    
     // 如果物品超出了右边界或下边界，直接隐藏虚影，而不是显示红色
     if (IsOutOfBounds(targetIndex, width, height))
     {
@@ -318,6 +348,18 @@ public class InventoryManager : MonoBehaviour
         return;
     }
 
+    // 让虚影显示为物品本身的形状
+    if (itemSprite != null)
+    {
+        shadowImage.sprite = itemSprite;
+        shadowImage.type = Image.Type.Simple; // 不规则图片不要用 Sliced
+        shadowImage.preserveAspect = true;
+    }
+    // 设置颜色
+    // 因为前面已经检查过边界了，CanPlaceItem 现在的 false 只代表“被占用”
+    bool canPlace = CanPlaceItem(targetIndex, width, height);
+    shadowImage.color = canPlace ? validColor : invalidColor;
+    
     // 2. 通过了边界检查，说明物品完全在格子范围内
     // 现在显示虚影，并根据是否重叠来决定颜色 (绿/红)
     shadowImage.enabled = true;
@@ -344,10 +386,7 @@ public class InventoryManager : MonoBehaviour
         shadowImage.rectTransform.localScale = Vector3.one;
     }
 
-    // 设置颜色
-    // 因为前面已经检查过边界了，CanPlaceItem 现在的 false 只代表“被占用”
-    bool canPlace = CanPlaceItem(targetIndex, width, height);
-    shadowImage.color = canPlace ? validColor : invalidColor;
+   
 }
 
 // ✨ 辅助方法：检查是否出界
@@ -379,13 +418,5 @@ public class InventoryManager : MonoBehaviour
     
     // 在 InventoryManager.cs 中
 
-    public void CreateItemAt(RuntimeCard card, int slotIndex)
-    {
-        var obj = Instantiate(itemPrefab, itemContainer);
-        var script = obj.GetComponent<InventoryItem>();
-        script.Initialize(card);
-    
-        // 直接调用 PlaceItem 把它按死在那个格子上
-        PlaceItem(script, slotIndex);
-    }
+
 }

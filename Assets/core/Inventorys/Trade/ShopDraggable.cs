@@ -67,7 +67,7 @@ public class ShopDraggable :  Draggable
         ghostRect.anchoredPosition = localMousePos- touchOffset;
         
         var bestIndex = GetCurrentGridIndex(ghostRect, data.width, data.height);
-        InventoryManager.Instance.UpdateShadow(bestIndex, data.width, data.height);
+        InventoryManager.Instance.UpdateShadow(bestIndex, data.width, data.height, data.artwork, data.shapeOffsets);
     }
 
     public override void OnEndDrag(PointerEventData eventData)
