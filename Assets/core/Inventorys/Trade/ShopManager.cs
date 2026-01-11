@@ -1,11 +1,13 @@
 using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine.UI;
+
 // using TMPro; // 如果需要刷新费用的文本
 
 public class ShopManager : MonoBehaviour
 {
     public static ShopManager Instance;
-
+    public Image globalDragGhost; // 这是一个放在 Canvas 顶层、默认隐藏的物体
     [Header("配置")]
     public Transform shopContainer;
     public GameObject shopSlotPrefab;
@@ -38,7 +40,7 @@ public class ShopManager : MonoBehaviour
             
             // 生成格子
             GameObject newSlot = Instantiate(shopSlotPrefab, shopContainer);
-            newSlot.GetComponent<ShopSlot>().Setup(randomItem);
+            newSlot.GetComponent<ShopItem>().Setup(randomItem);
         }
     }
 

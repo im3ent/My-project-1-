@@ -6,11 +6,11 @@ using UnityEngine.UI;
 public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
     private CanvasGroup canvasGroup;
-    private RectTransform rectTransform;
+    protected RectTransform rectTransform;
     private InventoryItem item;
     private Transform originalParent;
     // ✨ 新增：记录鼠标点击点和物品中心点的距离
-    private protected Vector2 touchOffset;
+    protected Vector2 touchOffset;
 
 
     private void Awake()
@@ -75,7 +75,7 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         // ✨ 隐藏虚影
         InventoryManager.Instance.HideShadow();
         // ✨✨✨ 新增：检测是否扔进了售卖区 ✨✨✨
-        SellZone sellZone = RaycastForSellZone(eventData.position);
+        var sellZone = RaycastForSellZone(eventData.position);
         if (sellZone != null)
         {
             SellItem();
@@ -96,25 +96,30 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
 
 
     // 射线检测辅助方法
-    private protected InventorySlot RaycastForSlot(Vector3 worldPos)
+    protected InventorySlot RaycastForSlot(Vector3 worldPos)
     {
-        PointerEventData pointerData = new PointerEventData(EventSystem.current);
-        // 注意：如果是 Overlay 模式，Camera 传 null；如果是 Camera 模式，传 UICamera
-        pointerData.position = RectTransformUtility.WorldToScreenPoint(null, worldPos); 
+        var pointerData = new PointerEventData(EventSystem.current)
+        {
+            // 注意：如果是 Overlay 模式，Camera 传 null；如果是 Camera 模式，传 UICamera
+            position = RectTransformUtility.WorldToScreenPoint(null, worldPos)
+        };
 
         var results = new List<RaycastResult>();
         EventSystem.current.RaycastAll(pointerData, results);
-
+        int targetLayer = LayerMask.NameToLayer("BackPage");
         foreach (var result in results)
         {
-            var slot = result.gameObject.GetComponent<InventorySlot>();
-            if (slot != null) return slot;
+            if (result.gameObject.layer == targetLayer)
+            {
+                var slot = result.gameObject.GetComponent<InventorySlot>();
+                if (slot != null) return slot;
+            }
         }
         return null;
     }
 
     // 计算反推的左上角索引
-    private protected int CalculateAnchorIndex(int hitIndex, int colOffset, int rowOffset)
+    protected int CalculateAnchorIndex(int hitIndex, int colOffset, int rowOffset)
     {
         int columns = InventoryManager.Instance.columns;
         
@@ -134,34 +139,30 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     // ✨ 将之前的 DetectBestGridPosition 改名为这个，只负责返回 int，不处理逻辑
     protected int GetCurrentGridIndex(RectTransform targetRect, int w, int h)
     {
-        if (item == null) return -1;
+        var width = targetRect.rect.width;
+        var height = targetRect.rect.height;
+        var cellW = width / w;
+        var cellH = height / h;
 
-        float width = targetRect.rect.width;
-        float height = targetRect.rect.height;
-        float cellW = width / item.width;
-        float cellH = height / item.height;
-
-        for (int x = 0; x < item.width; x++)
+        for (int x = 0; x < w; x++)
         {
-            for (int y = 0; y < item.height; y++)
+            for (int y = 0; y < h; y++)
             {
                 float localX = -width * 0.5f + (x + 0.5f) * cellW;
                 float localY = height * 0.5f - (y + 0.5f) * cellH;
             
-                Vector3 worldPos = rectTransform.TransformPoint(new Vector3(localX, localY, 0));
-                InventorySlot hitSlot = RaycastForSlot(worldPos);
+                var worldPos = targetRect.TransformPoint(new Vector3(localX, localY, 0));
+                var hitSlot = RaycastForSlot(worldPos);
 
-                if (hitSlot != null)
-                {
-                    int finalIndex = CalculateAnchorIndex(hitSlot.slotIndex, x, y);
-                    // 只要找到了合法的左上角锚点，就立即返回
-                    if (finalIndex != -1) return finalIndex;
-                }
+                if (hitSlot == null) continue;
+                var finalIndex = CalculateAnchorIndex(hitSlot.slotIndex, x, y);
+                // 只要找到了合法的左上角锚点，就立即返回
+                if (finalIndex != -1) return finalIndex;
             }
         }
         return -1;
     }
-    private protected int GetCurrentGridIndex()
+    private int GetCurrentGridIndex()
     {
         return GetCurrentGridIndex(this.rectTransform, item.width, item.height);
     }

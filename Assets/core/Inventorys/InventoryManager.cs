@@ -20,19 +20,19 @@ public class InventoryManager : MonoBehaviour
 
 
     [Header("虚影设置")]
-    public Image shadowImage; // 拖拽一下你的 GridContainer 里随便一个 Slot 的 Image 赋值给它，或者由代码生成
+    public Image shadowImage; 
+    // 拖拽一下你的 GridContainer 里随便一个 Slot 的 Image 赋值给它，或者由代码生成
     public Color validColor = new Color(0, 1, 0, 0.5f); // 绿色半透明 (能放)
     public Color invalidColor = new Color(1, 0, 0, 0.5f); // 红色半透明 (不能放)
     
     // 运行时数据
     private InventoryItem[] gridStates;
     // 注意：这里改成 public 方便 Draggable 访问，或者写个只读属性
-    public List<RectTransform> slotRects = new List<RectTransform>(); 
+    public List<RectTransform> slotRects = new (); 
     
     // 缓存参数
     private Vector2 cellSize;
     private Vector2 spacing;
-    private bool isInitialized = false;
 
     private void Awake()
     {
@@ -42,15 +42,12 @@ public class InventoryManager : MonoBehaviour
 
     private void Start()
     {
-        // 尝试初始化 (如果还没被 AddItem 触发过)
-        if (isInitialized) return;
         InitSystem();
     }
 
     // --- 核心初始化系统 ---
     private void InitSystem()
     {
-        if (isInitialized) return;
 
         // 1. 自动修正层级：确保 ItemContainer 在 GridContainer 下面 (渲染在最上)
         if (gridParent != null && itemContainer != null)
@@ -73,8 +70,6 @@ public class InventoryManager : MonoBehaviour
 
         // 4. 缓存坐标和参数
         CacheSlotData();
-
-        isInitialized = true;
     }
 
     void GenerateSlots()
@@ -85,7 +80,7 @@ public class InventoryManager : MonoBehaviour
 
         for (int i = 0; i < totalSlots; i++)
         {
-            GameObject slotObj = Instantiate(slotPrefab, gridParent);
+            var slotObj = Instantiate(slotPrefab, gridParent);
             var slot = slotObj.GetComponent<InventorySlot>();
             if (slot == null) slot = slotObj.AddComponent<InventorySlot>();
             
@@ -185,19 +180,11 @@ public class InventoryManager : MonoBehaviour
         ClearGrid(item.anchorSlotIndex, item.width, item.height, item);
 
         // B. 尝试放置：检查新位置是否合法
-        if (CanPlaceItem(targetIndex, item.width, item.height))
-        {
-            // 成功：去新家
-            PlaceItem(item, targetIndex);
-            
-
-        }
-        else
-        {
-            // 失败：回老家 (PlaceItem 会重新把数据填回去)
-            // Debug.Log($"位置 {targetIndex} 无效或被占用，回滚至 {item.anchorSlotIndex}");
-            PlaceItem(item, item.anchorSlotIndex);
-        }
+        // 失败：回老家 (PlaceItem 会重新把数据填回去)
+        // Debug.Log($"位置 {targetIndex} 无效或被占用，回滚至 {item.anchorSlotIndex}");
+        // 成功：去新家
+        PlaceItem(item, CanPlaceItem(targetIndex, item.width, item.height) 
+            ? targetIndex : item.anchorSlotIndex);
     }
 
     // --- 核心功能 3: 检查能否放置 ---
@@ -237,10 +224,10 @@ public class InventoryManager : MonoBehaviour
     {
         if (startIndex < 0) return;
 
-        Vector2Int startPos = GetCoord(startIndex);
-        for (int x = 0; x < w; x++)
+        var startPos = GetCoord(startIndex);
+        for (var x = 0; x < w; x++)
         {
-            for (int y = 0; y < h; y++)
+            for (var y = 0; y < h; y++)
             {
                 int idx = GetIndex(startPos.x + x, startPos.y + y);
                 // 只有当格子里的东西确实是自己时才清空 (防止误删别人)
@@ -255,7 +242,6 @@ public class InventoryManager : MonoBehaviour
     // 添加新物品 (外部调用)
     public bool AddItem(RuntimeCard card)
     {
-        if (!isInitialized) InitSystem();
 
         var w = (card.Data != null) ? card.Data.width : 1;
         var h = (card.Data != null) ? card.Data.height : 1;
@@ -395,7 +381,7 @@ public class InventoryManager : MonoBehaviour
 
     public void CreateItemAt(RuntimeCard card, int slotIndex)
     {
-        GameObject obj = Instantiate(itemPrefab, itemContainer);
+        var obj = Instantiate(itemPrefab, itemContainer);
         var script = obj.GetComponent<InventoryItem>();
         script.Initialize(card);
     

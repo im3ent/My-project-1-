@@ -1,114 +1,118 @@
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class ShopDraggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class ShopDraggable :  Draggable
 {
-    private ShopSlot shopSlot;
-    private GameObject dragIcon; // 拖拽时的临时图标
+    private ShopItem shopItem;
+    private Image ghostImage; // 拖拽时的临时图标
+    private RectTransform ghostRect;
     private Canvas canvas;
-
+    private CardDefinition data;
+    
     private void Awake()
     {
-        shopSlot = GetComponent<ShopSlot>();
+        shopItem = GetComponent<ShopItem>();
         canvas = GetComponentInParent<Canvas>(); // 获取商店的 Canvas
+        ghostImage = ShopManager.Instance.globalDragGhost;
+        ghostRect = ghostImage.GetComponent<RectTransform>();
     }
 
-    public void OnBeginDrag(PointerEventData eventData)
+    public override void OnBeginDrag(PointerEventData eventData)
     {
-        if (shopSlot.itemToSell == null) return;
+        data = shopItem.itemToSell;
+        if (data == null && ghostRect == null) return;
         
         // 1. 检查钱够不够（不够连拖都不让拖）
-        if (MoneyManager.Instance.currentGold < shopSlot.itemToSell.price)
+        if (MoneyManager.Instance.currentGold < data.price)
         {
             Debug.Log("钱不够，拖不动！");
             return;
         }
-
+        // 假设格子大小是 100，你可以从 InventoryManager 获取
+        const float s = 100f;
         // 2. 生成一个临时的图标跟随鼠标
-        dragIcon = new GameObject("ShopDragIcon");
-        dragIcon.transform.SetParent(canvas.transform); // 放在最上层
-        dragIcon.AddComponent<Canvas>().overrideSorting = true;
-        dragIcon.GetComponent<Canvas>().sortingOrder = 999; // 确保置顶
+        ghostRect.sizeDelta = new Vector2(data.width * s, data.height * s);
+        ghostRect.position = shopItem.iconImage.transform.position;
+        ghostImage.sprite = shopItem.iconImage.sprite;
+        ghostImage.gameObject.SetActive(true);
+  
 
-        // 复制图标
-        Image img = dragIcon.AddComponent<Image>();
-        img.sprite = shopSlot.iconImage.sprite;
-        img.raycastTarget = false; // 必须 false，否则挡住下面的射线
+        // ✨✨✨ 1. 计算触点偏移 ✨✨✨
+        // 算出鼠标当前位置，减去物品当前位置，得到偏移向量
+        // 如果是 Screen Space Overlay，可以直接减
+        // 如果是 Camera 模式，需要用 RectTransformUtility.ScreenPointToLocalPointInRectangle
         
-        // 设置大小
-        RectTransform rect = dragIcon.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(100, 100); // 或者读取配置的格子大小
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            ghostRect.parent as RectTransform, // 基于父物体坐标系
+            eventData.position, 
+            eventData.pressEventCamera, 
+            out var localMousePos
+        );
+        // 记录：鼠标点在哪里？(相对于物品原本的 anchors position)
+        touchOffset = localMousePos - ghostRect.anchoredPosition;
+
     }
 
-    public void OnDrag(PointerEventData eventData)
+    public override void OnDrag(PointerEventData eventData)
     {
-        if (dragIcon != null)
-        {
-            dragIcon.transform.position = eventData.position;
-        }
+        //if (ghostRect != null) return;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            ghostRect.parent as RectTransform, // 基于父物体坐标系
+            eventData.position, 
+            eventData.pressEventCamera, 
+            out var localMousePos
+        );
+        ghostRect.anchoredPosition = localMousePos- touchOffset;
+        
+        var bestIndex = GetCurrentGridIndex(ghostRect, data.width, data.height);
+        InventoryManager.Instance.UpdateShadow(bestIndex, data.width, data.height);
     }
 
-    public void OnEndDrag(PointerEventData eventData)
+    public override void OnEndDrag(PointerEventData eventData)
     {
-        if (dragIcon != null) Destroy(dragIcon);
-
-        // 3. 核心：检测鼠标松开位置下面是不是背包
-        // 我们利用 InventoryManager 现有的射线检测逻辑吗？
-        // 不，这里我们直接检测有没有碰到 InventorySlot
+        if (!ghostImage.gameObject.activeSelf) return;
         
-        InventorySlot hitSlot = RaycastForInventorySlot(eventData);
+        var bestIndex = GetCurrentGridIndex(ghostRect, data.width, data.height);
+        
+        ghostImage.gameObject.SetActive(false);
+        InventoryManager.Instance.HideShadow();
 
-        if (hitSlot != null)
+        if (bestIndex != -1)
         {
-            TryBuyAndPlace(hitSlot.slotIndex);
+            TryBuyAndPlace(bestIndex);
         }
     }
 
     private void TryBuyAndPlace(int targetIndex)
     {
-        CardDefinition data = shopSlot.itemToSell;
-        int price = data.price;
+        var price = data.price;
 
         // 双重检查：钱够不够
-        if (MoneyManager.Instance.currentGold >= price)
+        if (MoneyManager.Instance.currentGold < price) return;
+        // 尝试直接放置到指定格子
+        // 注意：我们需要 InventoryManager 提供一个 "TryPlaceAt" 方法
+        // 或者我们可以偷懒，直接调用 AddItem，但那样不能指定位置
+            
+        // 为了实现"拖到哪放哪"，我们需要手动构建 RuntimeCard
+        var newCard = new RuntimeCard(data, null);
+            
+        // 检查该位置能否放下
+        if (InventoryManager.Instance.CanPlaceItem(targetIndex, data.width, data.height))
         {
-            // 尝试直接放置到指定格子
-            // 注意：我们需要 InventoryManager 提供一个 "TryPlaceAt" 方法
-            // 或者我们可以偷懒，直接调用 AddItem，但那样不能指定位置
-            
-            // 为了实现"拖到哪放哪"，我们需要手动构建 RuntimeCard
-            RuntimeCard newCard = new RuntimeCard(data, null);
-            
-            // 检查该位置能否放下
-            if (InventoryManager.Instance.CanPlaceItem(targetIndex, data.width, data.height))
-            {
-                // 生成真物品
-                InventoryManager.Instance.CreateItemAt(newCard, targetIndex);
+            // 生成真物品
+            InventoryManager.Instance.CreateItemAt(newCard, targetIndex);
                 
-                // 扣钱
-                MoneyManager.Instance.SpendGold(price);
+            // 扣钱
+            MoneyManager.Instance.SpendGold(price);
                 
-                Debug.Log("拖拽进货成功！");
-            }
-            else
-            {
-                Debug.Log("这里放不下！");
-            }
+            Debug.Log("拖拽进货成功！");
+        }
+        else
+        {
+            Debug.Log("这里放不下！");
         }
     }
 
-    // 简单的射线检测找格子
-    private InventorySlot RaycastForInventorySlot(PointerEventData eventData)
-    {
-        var results = new System.Collections.Generic.List<RaycastResult>();
-        EventSystem.current.RaycastAll(eventData, results);
-
-        foreach (var result in results)
-        {
-            var slot = result.gameObject.GetComponent<InventorySlot>();
-            if (slot != null) return slot;
-        }
-        return null;
-    }
 }

@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-public class ShopSlot : MonoBehaviour
+public class ShopItem : MonoBehaviour
 {
     public CardDefinition itemToSell; // 这个格子卖什么？
     
@@ -18,7 +18,7 @@ public class ShopSlot : MonoBehaviour
         buyButton.onClick.AddListener(OnBuyClicked);
     }
 
-    public void Setup(CardDefinition data,bool isBuyBack = false)
+    public void Setup(CardDefinition data)
     {
         itemToSell = data;
 
@@ -33,7 +33,7 @@ public class ShopSlot : MonoBehaviour
         
     }
 
-    void OnBuyClicked()
+    private void OnBuyClicked()
     {
         if (itemToSell == null) return;
         
@@ -42,9 +42,9 @@ public class ShopSlot : MonoBehaviour
         {
             // 2. 尝试往背包里加 (利用你之前写的 AddItem 返回的 bool !)
             // 注意：我们需要把它包装成 RuntimeCard
-            RuntimeCard newCard = new RuntimeCard(itemToSell, null);
+            var newCard = new RuntimeCard(itemToSell, null);
 
-            bool addSuccess = InventoryManager.Instance.AddItem(newCard);
+            var addSuccess = InventoryManager.Instance.AddItem(newCard);
 
             if (addSuccess)
             {
