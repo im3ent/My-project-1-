@@ -5,7 +5,8 @@ using TMPro;
 public class ShopItem : MonoBehaviour
 {
     public CardDefinition itemToSell; // 这个格子卖什么？
-    
+    public RuntimeItem runtimeToSell;
+
     [Header("UI 组件")]
     public Image iconImage;
     public TextMeshProUGUI nameText;
@@ -21,16 +22,12 @@ public class ShopItem : MonoBehaviour
     public void Setup(CardDefinition data)
     {
         itemToSell = data;
-
-        
+        runtimeToSell = ShopManager.Instance.CreateCardWithRandomAffix(data);
         iconImage.sprite = data.artwork;
-        if(nameText != null) nameText.text = data.cardName;
-        if(priceText != null) priceText.text = $"${data.price}";
-        
-
+        nameText.text = data.cardName;
+         priceText.text = $"${data.price}";
         // 普通商品，显示原价
-        if(priceText != null) priceText.text = $"${data.price}";
-        
+         priceText.text = $"${data.price}";
     }
 
     private void OnBuyClicked()
@@ -40,11 +37,8 @@ public class ShopItem : MonoBehaviour
         // 1. 检查钱够不够
         if (MoneyManager.Instance.currentGold >= itemToSell.price)
         {
-            // 2. 尝试往背包里加 (利用你之前写的 AddItem 返回的 bool !)
-            // 注意：我们需要把它包装成 RuntimeCard
-            var newCard = new RuntimeCard(itemToSell, null);
 
-            var addSuccess = InventoryManager.Instance.AddItem(newCard);
+            var addSuccess = InventoryManager.Instance.AddItem(runtimeToSell);
 
             if (addSuccess)
             {
@@ -64,4 +58,5 @@ public class ShopItem : MonoBehaviour
             Debug.Log("穷鬼，买不起！");
         }
     }
+
 }

@@ -2,22 +2,23 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine.Serialization;
 
 public class InventoryManager : MonoBehaviour
 {
     public static InventoryManager Instance;
-
+    
     [Header("核心设置")]
     public int totalSlots = 20;
     public int columns = 5; // 必须与 Grid Layout Group 一致
-
+    public  int rows = 4;
     [Header("UI 引用")]
     public Transform gridParent;    // 放格子的父物体 (Grid)
     public Transform itemContainer; // 放物品的父物体 (Container)
     public GameObject slotPrefab;   // 格子预制体
     public GameObject itemPrefab;   // 物品预制体
 
-
+    public CharacterBase player;
 
     [Header("虚影设置")]
     public Image shadowImage; 
@@ -30,6 +31,8 @@ public class InventoryManager : MonoBehaviour
     // 注意：这里改成 public 方便 Draggable 访问，或者写个只读属性
     public List<RectTransform> slotRects = new (); 
     
+    private HashSet<InventoryItem> allInventoryItems = new();
+    public List<InventoryItem> cachedI2IPassives = new();
     // 缓存参数
     private Vector2 cellSize;
     private Vector2 spacing;
@@ -128,8 +131,8 @@ public class InventoryManager : MonoBehaviour
 
         // 2. 锁定格子：在逻辑网格中标记占用
         List<Vector2Int> shape = null;
-        if (item != null) shape = item.shapeOffsets;
-        var pointsToOccupy = GetEffectiveShape(item.width, item.height, shape);
+        if (item != null) shape = item.ShapeOffsets;
+        var pointsToOccupy = GetEffectiveShape(item.Width, item.Height, shape);
         var startCoord = GetCoord(targetIndex);
         // 标记占用
         foreach (Vector2Int point in pointsToOccupy)
@@ -159,10 +162,10 @@ public class InventoryManager : MonoBehaviour
             itemRect.localPosition = targetLocalPos;
 
             // 计算多格物品的中心点偏移 (如果物品大于1格，需要往右下挪一点)
-            if (item.width > 1 || item.height > 1)
+            if (item.Width > 1 || item.Height > 1)
             {
-                float offsetX = (item.width - 1) * (cellSize.x + spacing.x) * 0.5f;
-                float offsetY = -(item.height - 1) * (cellSize.y + spacing.y) * 0.5f;
+                float offsetX = (item.Width - 1) * (cellSize.x + spacing.x) * 0.5f;
+                float offsetY = -(item.Height - 1) * (cellSize.y + spacing.y) * 0.5f;
                 itemRect.localPosition += new Vector3(offsetX, offsetY, 0);
             }
             
@@ -178,13 +181,13 @@ public class InventoryManager : MonoBehaviour
     {
         // A. 先清理：把自己从老位置的数据里“抠”出来
         // 这样在计算新位置(CanPlaceItem)时，才不会被“过去的自己”挡住
-        ClearGrid(item.anchorSlotIndex, item.width, item.height, item);
+        ClearGrid(item.anchorSlotIndex, item.Width, item.Height, item);
 
         // B. 尝试放置：检查新位置是否合法
         // 失败：回老家 (PlaceItem 会重新把数据填回去)
         // Debug.Log($"位置 {targetIndex} 无效或被占用，回滚至 {item.anchorSlotIndex}");
         // 成功：去新家
-        PlaceItem(item, CanPlaceItem(targetIndex, item.width, item.height) 
+        PlaceItem(item, CanPlaceItem(targetIndex, item.Width, item.Height,item.ShapeOffsets) 
             ? targetIndex : item.anchorSlotIndex);
     }
 
@@ -219,7 +222,6 @@ public class InventoryManager : MonoBehaviour
     }
 
     // --- 辅助功能 ---
-    // 在 InventoryManager 类中新增
     public List<Vector2Int> GetEffectiveShape(int w, int h, List<Vector2Int> customShape)
     {
         // 如果有自定义形状，直接返回
@@ -242,7 +244,7 @@ public class InventoryManager : MonoBehaviour
         if (startIndex < 0) return;
         // 获取形状
         List<Vector2Int> shape = null;
-        if (itemToClear.runtimeCard.Data != null) shape = itemToClear.runtimeCard.Data.shapeOffsets;
+        if (itemToClear.runtimeItem.Data != null) shape = itemToClear.runtimeItem.Data.shapeOffsets;
     
         List<Vector2Int> pointsToClear = GetEffectiveShape(w, h, shape);
         Vector2Int startCoord = GetCoord(startIndex);
@@ -258,61 +260,69 @@ public class InventoryManager : MonoBehaviour
     }
 
     // Button添加物品
-    public bool AddItem(RuntimeCard card)
+    public bool AddItem(RuntimeItem item)
     {
 
-        var w = (card.Data != null) ? card.Data.width : 1;
-        var h = (card.Data != null) ? card.Data.height : 1;
+        var w = (item.Data != null) ? item.Data.width : 1;
+        var h = (item.Data != null) ? item.Data.height : 1;
 
         // 寻找第一个能放下的位置
         for (var i = 0; i < totalSlots; i++)
         {
-            if (!CanPlaceItem(i, w, h)) continue;
+            if (!CanPlaceItem(i, w, h,item.Data.shapeOffsets)) continue;
             var obj = Instantiate(itemPrefab, itemContainer);
             var img = obj.GetComponent<Image>();
-            img.sprite = card.Data.artwork;
+            img.sprite = item.Data.artwork;
             img.alphaHitTestMinimumThreshold = 0.1f;
             var script = obj.GetComponent<InventoryItem>();
-            script.Initialize(card);
+            script.Initialize(item);
                 
             // 放置并更新数据
             PlaceItem(script, i);
+            //启用CheckNeighbor检查item四周
+
             return true;
         }
         Debug.Log("背包已满，无法添加物品");
         return false;
     }
     //鼠标拖拽添加
-    public void CreateItemAt(RuntimeCard card, int slotIndex)
+    public void CreateItemAt(RuntimeItem item, int slotIndex)
     {
         var obj = Instantiate(itemPrefab, itemContainer);
         var img = obj.GetComponent<Image>();
-        img.sprite = card.Data.artwork;
+        img.sprite = item.Data.artwork;
         img.alphaHitTestMinimumThreshold = 0.1f;
         var script = obj.GetComponent<InventoryItem>();
-        script.Initialize(card);
+        script.Initialize(item);
 
         PlaceItem(script, slotIndex);
+        //启用CheckNeighbor检查item四周
+        SetDirty();
+        
     }
 
     public void RemoveItem(InventoryItem item)
     {
         // 1. 清空它在网格里的占用
-        ClearGrid(item.anchorSlotIndex, item.width, item.height, item);
+        ClearGrid(item.anchorSlotIndex, item.Width, item.Height, item);
     
         // 2. 如果你有列表维护所有物品，在这里 Remove
         // ...
     
         // 3. 如果有音效播放，可以在这里写
+        
+        //启用CheckNeighbor检查item四周
+        SetDirty();
     }
-
+    
     
     // 坐标转换工具
-    public Vector2Int GetCoord(int index) => new Vector2Int(index % columns, index / columns);
-    public int GetIndex(int x, int y) => y * columns + x;
+    private Vector2Int GetCoord(int index) => new Vector2Int(index % columns, index / columns);
+    private int GetIndex(int x, int y) => y * columns + x;
 
-// --- 虚影控制方法 ---
-// 在 InventoryManager.cs 中
+    // --- 虚影控制方法 ---
+    // 在 InventoryManager.cs 中
     private void CreateShadow()
 {
     if (shadowImage == null)
@@ -357,7 +367,7 @@ public class InventoryManager : MonoBehaviour
     }
     // 设置颜色
     // 因为前面已经检查过边界了，CanPlaceItem 现在的 false 只代表“被占用”
-    bool canPlace = CanPlaceItem(targetIndex, width, height);
+    bool canPlace = CanPlaceItem(targetIndex, width, height, shape);
     shadowImage.color = canPlace ? validColor : invalidColor;
     
     // 2. 通过了边界检查，说明物品完全在格子范围内
@@ -389,7 +399,7 @@ public class InventoryManager : MonoBehaviour
    
 }
 
-// ✨ 辅助方法：检查是否出界
+    // ✨ 辅助方法：检查是否出界
     private bool IsOutOfBounds(int targetIndex, int width, int height)
 {
     Vector2Int pos = GetCoord(targetIndex);
@@ -415,8 +425,180 @@ public class InventoryManager : MonoBehaviour
     {
         if (shadowImage != null) shadowImage.enabled = false;
     }
-    
-    // 在 InventoryManager.cs 中
 
+    //  核心通用邻居查找方法 (GetNeighbors)
+    // ==========================================
+    private List<InventoryItem> GetNeighbors(InventoryItem sourceItem, Vector2Int[] directionsToCheck)
+    {
+        List<InventoryItem> neighbors = new List<InventoryItem>();
+        
+        // 用来去重：防止大物品的多个格子都检测到了同一个邻居，导致重复添加
+        HashSet<InventoryItem> found = new HashSet<InventoryItem>();
+
+        // 1. 拿到物品锚点的二维坐标 (比如物品左上角在 [2, 3])
+        Vector2Int anchorCoord = GetCoord(sourceItem.anchorSlotIndex);
+
+        // 2. 遍历这个物品占据的所有格子 (ShapeOffsets 是物品定义的形状偏移列表)
+        // 比如 1x1 的物品只有 (0,0)；1x2 的物品有 (0,0) 和 (0,1)
+        foreach (Vector2Int offset in sourceItem.ShapeOffsets)
+        {
+            // 计算出当前占据格子的绝对坐标
+            Vector2Int currentCellPos = anchorCoord + offset;
+
+            // 3. 向指定的方向发射探测 (上、下、左、右等)
+            foreach (Vector2Int dir in directionsToCheck)
+            {
+                Vector2Int targetPos = currentCellPos + dir;
+
+                // 检查并添加邻居
+                CheckAndAddNeighbor(targetPos, sourceItem, neighbors, found);
+            }
+        }
+
+        return neighbors;
+    }
+
+    // ==========================================
+    // 3. 检查并添加逻辑 (CheckAndAddNeighbor)
+    // ==========================================
+    private void CheckAndAddNeighbor(Vector2Int pos, InventoryItem source, List<InventoryItem> list, HashSet<InventoryItem> set)
+    {
+        // 第一步：界外检查 (保护程序不报错)
+        if (!IsValidGridPos(pos)) return;
+
+        // 第二步：获取该位置的物品
+        InventoryItem target = GetItemAt(pos);
+
+        // 第三步：逻辑判定
+        // target != null       -> 格子必须有东西
+        // target != source     -> 邻居不能是自己 (遍历自己的格子时会指回自己)
+        // !set.Contains(target)-> 之前没加过 (去重)
+        if (target != null && target != source && !set.Contains(target))
+        {
+            set.Add(target);  // 标记为已找到
+            list.Add(target); // 加入结果列表
+        }
+    }
+
+    // ==========================================
+    // 4. 消除所有“陌生参数”的基础工具方法
+    // ==========================================
+
+    // 工具 B: 检查坐标是否越界
+    private bool IsValidGridPos(Vector2Int pos)
+    {
+        // x 必须在 [0, width-1] 之间
+        // y 必须在 [0, height-1] 之间
+        if (pos.x < 0 || pos.x >= columns) return false;
+        if (pos.y < 0 || pos.y >= rows) return false;
+        return true;
+    }
+
+    // 工具 C: 根据坐标获取物品
+    private InventoryItem GetItemAt(Vector2Int pos)
+    {
+        // 将二维坐标转回一维索引
+        int index = pos.y * columns + pos.x;
+        
+        // 安全检查 (虽然 IsValidGridPos 已经防住了，但双重保险)
+        if (index < 0 || index >= gridStates.Length) return null;
+
+        return gridStates[index];
+    }
+   
+
+    // 2. 脏标记：仅在必要时刷新
+    private bool inventoryDirty = false;
+
+    private void SetDirty() { inventoryDirty = true; }
+
+    void LateUpdate()
+    {
+        if (inventoryDirty)
+        {
+            //UpdateAllAuraEffects();
+            inventoryDirty = false;
+        }
+    }
+
+
+    private void Step1_CalculateI2IPassives()
+    {
+        // 1. 获取当前背包所有物品
+        allInventoryItems.Clear();
+        foreach (var item in gridStates)
+        {
+            if (item != null)
+            {
+                // HashSet.Add 如果发现重复会自动跳过，返回 false
+                allInventoryItems.Add(item);
+            }
+        }
+
+        // 2. 先重置所有动态数据（关键！）
+        foreach (var item in allInventoryItems)
+        {
+            item.runtimeItem.ClearTemporaryPassives();
+            item.runtimeItem.passiveMultiplier = 1.0f; // 重置倍率
+            item.runtimeItem.isPassiveActive = false;  // 重置激活状态
+        }
+
+        // 3. 遍历每个物品，看看它是否发散光环
+        foreach (var sourceItem in allInventoryItems)
+        {
+            foreach (var ctx in sourceItem.runtimeItem.GetSourcePassives())
+            {
+                var potentialTargets = GetTargetsByScope(sourceItem, ctx.effect.scope, allInventoryItems);
+                foreach (var target in potentialTargets)
+                {
+                    target.runtimeItem.isPassiveActive = true;
+                    target.runtimeItem.passiveMultiplier += 1.0f;
+                    target.runtimeItem.AddTemporaryPassive(ctx.effect,ctx.source);
+
+                }
+                
+                // ... 处理 Allies / Global 等其他类型 ...
+            }
+           
+        }
+        
+        
+        player.ClearInventoryPassives();
+        foreach (var item in allInventoryItems)
+        {
+            // 3. 拿到该卡片当前所有的生效被动
+            // 注意：GetActivePassives() 应该返回 (静态被动 + 永久随机词条 + 刚才第一阶段加上的临时光环)
+            foreach (var ctx in item.runtimeItem.GetActivePassives())
+            {
+                // 4. 关键过滤：只有 Scope 为 Allies 或 Global 的才发给角色
+                // SelfOnly 通常只影响卡牌自己（比如增加卡牌基础伤害）
+                player.AddTemporaryPassive(ctx.effect, ctx.source);
+
+            }
+        }
+        
+    }
+    // 根据 Scope 返回对应的物品列表
+    private IEnumerable<InventoryItem> GetTargetsByScope(
+        InventoryItem source, 
+        PassiveScope scope, 
+        HashSet<InventoryItem> allItems)
+    {
+        // C# 8.0+ 的 Switch Expression 写法，非常简洁
+        return scope switch
+        {
+            // 空间类 (需要算坐标)
+            // === 空间类 (直接复用通用方法) ===
+            PassiveScope.Adjacent     => GetNeighbors(source, GridDirections.All),   // 上下左右
+            PassiveScope.TopNeighbor  => GetNeighbors(source, GridDirections.Top),   // 仅上面
+            PassiveScope.LeftNeighbor => GetNeighbors(source, GridDirections.Left),  // 仅左面
+        
+            // 全局类
+            //PassiveScope.Global     => GetAllOtherItems(source, allItems),
+        
+            // 默认返回空
+            _ => System.Array.Empty<InventoryItem>()
+        };
+    }
 
 }

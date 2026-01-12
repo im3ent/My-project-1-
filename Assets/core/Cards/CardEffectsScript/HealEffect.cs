@@ -14,7 +14,7 @@ public class HealEffect : CardEffect
         }
         return animateDuration;
     }
-    public override bool GetDescriptionValue(RuntimeCard card, out int baseVal, out int finalVal)
+    public override bool GetDescriptionValue(RuntimeItem item, out int baseVal, out int finalVal)
     {
         baseVal = value;
         // 直接在这里调用 GM 的计算公式，把逻辑封装在效果内部

@@ -65,7 +65,7 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
                 out var globalMousePos)) return;
         globalMousePos.z = 0; 
             
-        if (_cardDisplay.runtimeCard.Data.needsTarget)
+        if (_cardDisplay.runtimeItem.Data.needsTarget)
         {
             if (Mouse.current.position.ReadValue().y > Screen.height * triggerLine)
             {
@@ -109,7 +109,7 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
 
         // --- 逻辑分支 ---
         // 1. 获取卡牌信息
-        var card = _cardDisplay.runtimeCard.Data;
+        var card = _cardDisplay.runtimeItem.Data;
         // 2. 如果不需要目标 (AOE、抽牌) -> 只要拖到上半区就打出
         if (!card.needsTarget)
         {
@@ -169,7 +169,7 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
 
     private void TryPlayCard(CharacterBase target)
     {
-        var card = _cardDisplay.runtimeCard;
+        var card = _cardDisplay.runtimeItem;
         if (GameManager.Instance.PlayCard(card, target)) {
             // 有钱！执行！
             Destroy(gameObject); // 销毁卡牌

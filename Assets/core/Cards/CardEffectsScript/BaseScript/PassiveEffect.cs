@@ -6,7 +6,13 @@ public enum PassiveScope
     AllAllies,    // 全体友军
     AllEnemies,   // 全体敌人
     SelfOnly,     // 仅限持有者
-    OtherAllies   // 其他友军
+    OtherAllies,   // 其他友军
+    
+    Adjacent,     // 仅限邻居 (随从：站位相邻；物品：背包格子相邻)
+    SameRow,      // 同一行
+    SameColumn,  // 同一列
+    TopNeighbor,
+    LeftNeighbor,
 }
 
 public abstract class PassiveEffect : ScriptableObject
@@ -15,7 +21,7 @@ public abstract class PassiveEffect : ScriptableObject
     [TextArea] public string description;
     public PassiveScope scope = PassiveScope.Global;
     
-    // --- 核心判断逻辑 (复用之前的) ---
+    // --- RuntimeItem 对 CharacterBase 发出 Passive---
     public bool ShouldTrigger(CharacterBase owner, CharacterBase target)
     {
         if (owner == null || target == null) return false;
@@ -29,6 +35,7 @@ public abstract class PassiveEffect : ScriptableObject
             _ => false
         };
     }
+
 
     // --- A. 攻击力 (Attack) ---
     public virtual int GetAttackAdditive(CharacterBase owner) => 0;      // 加多少

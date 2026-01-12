@@ -45,7 +45,7 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         canvasGroup.blocksRaycasts = false; // 允许射线穿透物品检测到底下的格子
         canvasGroup.alpha = 0.6f;
         
-        InventoryManager.Instance.ClearGrid(item.anchorSlotIndex, item.width, item.height, item);
+        InventoryManager.Instance.ClearGrid(item.anchorSlotIndex, item.Width, item.Height, item);
     }
 
     public virtual void OnDrag(PointerEventData eventData)
@@ -62,9 +62,9 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         );
             
         rectTransform.anchoredPosition = localMousePos - touchOffset;
-        var shape = (item != null) ? item.shapeOffsets : null;
-        //int bestIndex = GetCurrentGridIndex(); // 获取当前瞄准的格子
-        //InventoryManager.Instance.UpdateShadow(bestIndex, item.width, item.height, item.runtimeCard.Data.artwork, shape);
+        var shape = (item != null) ? item.ShapeOffsets : null;
+        int bestIndex = GetCurrentGridIndex(); // 获取当前瞄准的格子
+        InventoryManager.Instance.UpdateShadow(bestIndex, item.Width, item.Height, item.runtimeItem.Data.artwork, shape);
     }
 
     public virtual void OnEndDrag(PointerEventData eventData)
@@ -164,25 +164,29 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     }
     private int GetCurrentGridIndex()
     {
-        return GetCurrentGridIndex(this.rectTransform, item.width, item.height);
+        return GetCurrentGridIndex(this.rectTransform, item.Width, item.Height);
     }
     
     // ✨ 处理售卖逻辑
     private void SellItem()
     {
-        if (item != null && item.runtimeCard != null)
-        {
-            // 1. 加钱
-            MoneyManager.Instance.AddGold(item.runtimeCard.Data.price);
-            
-            // 2. 从背包数据里彻底清除
-            // InventoryManager 现在的 ClearGrid 只是清空引用，我们需要一个彻底移除的方法
-            InventoryManager.Instance.RemoveItem(item); 
+        if (item == null || item.runtimeItem == null) return;
         
-            // 3. 销毁物体
-            Destroy(gameObject);
-
+        var data = item.runtimeItem.Data;
+        // 1. 加钱
+        MoneyManager.Instance.AddGold(data.price);
+            
+        // 将卡牌退回商店卡池
+        if (ShopManager.Instance != null)
+        {
+            ShopManager.Instance.ReturnCardToPool(data);
         }
+        // 2. 从背包数据里彻底清除
+        // InventoryManager 现在的 ClearGrid 只是清空引用，我们需要一个彻底移除的方法
+        InventoryManager.Instance.RemoveItem(item); 
+        
+        // 3. 销毁物体
+        Destroy(gameObject);
     }
 
 // ✨ 射线检测售卖区 (和找格子类似，但只找 SellZone)

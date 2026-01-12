@@ -7,7 +7,7 @@ using TMPro;
 public class CardDisplay : MonoBehaviour
 {
     [Header("数据源")]
-    public RuntimeCard runtimeCard;
+    public RuntimeItem runtimeItem;
 
     [Header("UI 组件绑定")]
     public TextMeshProUGUI nameText;
@@ -22,15 +22,15 @@ public class CardDisplay : MonoBehaviour
     private CharacterStateManager _boundManager;
 
     // --- 1. 初始化绑定 (核心修改) ---
-    public void Bind(RuntimeCard card)
+    public void Bind(RuntimeItem item)
     {
         // A. 安全解绑旧的 (防止对象池复用时出错)
         UnsubscribeEvents();
 
-        runtimeCard = card;
+        runtimeItem = item;
         
         // B. 搬运静态数据
-        var data = card.Data;
+        var data = item.Data;
         nameText.text = data.cardName;
         descriptionText.text = data.description;
         artworkImage.sprite = data.artwork;
@@ -51,9 +51,9 @@ public class CardDisplay : MonoBehaviour
 
         // C. 订阅新主人的事件
         // 只有当主人身上挂了 CharacterStateManager 时才订阅
-        if (runtimeCard.Owner != null)
+        if (runtimeItem.Owner != null)
         {
-            _boundManager = runtimeCard.Owner.GetComponent<CharacterStateManager>();
+            _boundManager = runtimeItem.Owner.GetComponent<CharacterStateManager>();
             if (_boundManager != null)
             {
                 // ✨ 监听：只要主人的 Buff 变了，我就刷新描述和费用
@@ -111,21 +111,21 @@ public class CardDisplay : MonoBehaviour
     // --- 3. 费用刷新逻辑 (调用新接口) ---
     private void UpdateCostUI()
     {
-        if (runtimeCard == null) return;
+        if (runtimeItem == null) return;
 
         // ✨ 关键修改：调用 GameManager 的新方法，传入 RuntimeCard
         // (GameManager 内部会去找 Owner 的 StateManager 计算费用)
-        var currentCost = GameManager.Instance.GetModifiedCost(runtimeCard);
+        var currentCost = GameManager.Instance.GetModifiedCost(runtimeItem);
 
         // 更新文本
         costText.text = currentCost.ToString();
 
         // 变色逻辑
-        if (currentCost < runtimeCard.Data.manaCost)
+        if (currentCost < runtimeItem.Data.manaCost)
         {
             costText.color = Color.green; // 便宜了
         }
-        else if (currentCost > runtimeCard.Data.manaCost)
+        else if (currentCost > runtimeItem.Data.manaCost)
         {
             costText.color = Color.red;   // 贵了
         }
@@ -138,10 +138,10 @@ public class CardDisplay : MonoBehaviour
     // --- 4. 描述刷新逻辑 (微调参数) ---
     private void UpdateDescription()
     {
-        if (runtimeCard == null) return;
+        if (runtimeItem == null) return;
         
-        var cardData = runtimeCard.Data;
-        var caster = runtimeCard.Owner;
+        var cardData = runtimeItem.Data;
+        var caster = runtimeItem.Owner;
         var dynamicValues = new List<string>();
 
         // 连接所有效果列表
@@ -154,7 +154,7 @@ public class CardDisplay : MonoBehaviour
         {
             // ✨ 这里传入 caster (RuntimeCard.Owner)
             // 确保 ShieldSlamEffect 能拿到正确的护甲值
-            if (effect.GetDescriptionValue(runtimeCard, out var baseVal, out var finalVal))
+            if (effect.GetDescriptionValue(runtimeItem, out var baseVal, out var finalVal))
             {
                 dynamicValues.Add(FormatValue(baseVal, finalVal));
             }

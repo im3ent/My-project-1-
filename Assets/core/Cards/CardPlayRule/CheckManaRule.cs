@@ -3,10 +3,10 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "Rules/Check Mana")]
 public class CheckManaRule : PlayRule
 {
-    public override string Check(RuntimeCard card, CharacterBase target)
+    public override string Check(RuntimeItem item, CharacterBase target)
     {
 
-        var finalCost = GameManager.Instance.GetModifiedCost(card);
+        var finalCost = GameManager.Instance.GetModifiedCost(item);
         return GameManager.Instance.currentMana < finalCost ? "法力值不足！" : null; // 通过
     }
 }

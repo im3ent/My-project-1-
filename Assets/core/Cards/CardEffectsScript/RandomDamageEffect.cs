@@ -15,7 +15,7 @@ public class RandomDamageEffect : CardEffect {
     public override float Execute(EffectContext ctx) {
         // 1. ✨ 先计算最终伤害 (应用法强、Buff)
         // 注意：只算一次就行，不需要在循环里算
-        int finalDamage = GameManager.Instance.GetModifiedDamage(ctx.sourceRuntimeCard, value);
+        int finalDamage = GameManager.Instance.GetModifiedDamage(ctx.sourceRuntimeItem, value);
 
         for (var i = 0; i < repeatCount; i++) {
             var randomEnemy = GameManager.Instance.GetRandomEnemy();
@@ -28,11 +28,11 @@ public class RandomDamageEffect : CardEffect {
         return animateDuration;
     }
     
-    public override bool GetDescriptionValue(RuntimeCard card, out int baseVal, out int finalVal)
+    public override bool GetDescriptionValue(RuntimeItem item, out int baseVal, out int finalVal)
     {
         baseVal = value;
         // 直接在这里调用 GM 的计算公式，把逻辑封装在效果内部
-        finalVal = GameManager.Instance.GetModifiedDamage(card, value);
+        finalVal = GameManager.Instance.GetModifiedDamage(item, value);
         return true; // 告诉 UI：我有数值，请填坑
     }
 }

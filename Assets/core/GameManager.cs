@@ -172,7 +172,7 @@ public class GameManager : MonoBehaviour
         if (data == null) yield break;
 
         var effects = isStartOfTurn ? data.onTurnStartEffects : data.onTurnEndEffects;
-        var ctx = new EffectContext(unit, null, unit.sourceRuntimeCard);
+        var ctx = new EffectContext(unit, null, unit.sourceRuntimeItem);
         foreach (var effect in effects) 
         {
             // 在效果执行前，让随从抖一下或者发个光
@@ -206,36 +206,36 @@ public class GameManager : MonoBehaviour
         OnBoardChanged();
     }
     
-    public bool PlayCard(RuntimeCard runtimeCard, CharacterBase target)
+    public bool PlayCard(RuntimeItem runtimeItem, CharacterBase target)
     {
         
-        if (runtimeCard == null) return false;
+        if (runtimeItem == null) return false;
         
         // 先查“国法” (全局规则：有没有费，有没有被沉默)
         foreach (var rule in globalPlayRules)
         {
-            var error = rule.Check(runtimeCard, target);
+            var error = rule.Check(runtimeItem, target);
             if (error == null) continue;
             return false;
         }
         
         // 再查“家规” (卡牌自己的特殊要求)
         // 比如斩杀卡配置了一个 TargetMustBeDamagedRule
-        if (runtimeCard.Data.customRequirements != null)
+        if (runtimeItem.Data.customRequirements != null)
         {
-            foreach (var rule in runtimeCard.Data.customRequirements)
+            foreach (var rule in runtimeItem.Data.customRequirements)
             {
-                var error = rule.Check(runtimeCard, target);
+                var error = rule.Check(runtimeItem, target);
                 if (error != null) {  return false; }
             }
         }
 
-        UseMana(GetModifiedCost(runtimeCard));
+        UseMana(GetModifiedCost(runtimeItem));
         
-        var caster = runtimeCard.Owner;
+        var caster = runtimeItem.Owner;
 
         // 构建上下文
-        var ctx = new EffectContext(caster, target, runtimeCard);
+        var ctx = new EffectContext(caster, target, runtimeItem);
         
         // 【介入阶段】全局光环/被动触发 (Passive Effects)
         foreach (var unit in allUnits)
@@ -244,18 +244,18 @@ public class GameManager : MonoBehaviour
             if (unit == null || unit.currentHealth <= 0) continue;
 
             // 检查该单位是否有被动技能配置
-            if (unit.cardData != null && unit.cardData.passives != null)
-            {
-                foreach (var passive in unit.cardData.passives)
+            
+            
+                foreach (var passiveContext in unit.GetActivePassives())
                 {
-                    if (passive.ShouldTrigger(unit, caster))
+                    if (passiveContext.effect.ShouldTrigger(unit, caster))
                     {
                         // 触发钩子！
                         // 比如 DoubleBattlecryPassive 会在这里把 ctx.repeatCount += 1
-                        passive.OnPlayCard(unit, ctx);
+                        passiveContext.effect.OnPlayCard(unit, ctx);
                     }
                 }
-            }
+            
         }
         
         // 4. ✨ 核心：触发 "OnPlayCard" 钩子
@@ -276,9 +276,9 @@ public class GameManager : MonoBehaviour
 
 
     // ✨ 核心辅助方法：输入基础伤害，输出最终伤害
-    public int GetModifiedDamage(RuntimeCard card, int baseDamage)
+    public int GetModifiedDamage(RuntimeItem item, int baseDamage)
     {
-        var stateManager = card.Owner.GetComponent<CharacterStateManager>();
+        var stateManager = item.Owner.GetComponent<CharacterStateManager>();
     
         var finalDamage = baseDamage;
         // 如果没有状态管理器，直接返回基础值
@@ -286,19 +286,19 @@ public class GameManager : MonoBehaviour
 
         //if (card.Data.cardType == CardType.Spell)
         {
-            finalDamage = stateManager.GetModifiedSpellDamage(finalDamage, card);
+            finalDamage = stateManager.GetModifiedSpellDamage(finalDamage, item);
         }
         return stateManager.GetModifiedOutgoingDamage(finalDamage);
     }
     
     // 获取某张卡当前的实际费用
-    public int GetModifiedCost(RuntimeCard card)
+    public int GetModifiedCost(RuntimeItem item)
     {
-        var stateManager = card.Owner.GetComponent<CharacterStateManager>();
-        var cost = card.manaCost;
+        var stateManager = item.Owner.GetComponent<CharacterStateManager>();
+        var cost = item.manaCost;
         if (stateManager != null)
         {
-            cost = stateManager.GetCalculatedCost(card);
+            cost = stateManager.GetCalculatedCost(item);
         }
 
         return Mathf.Max(0, cost);

@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine.Serialization;
 
 [CreateAssetMenu(fileName = "NewCard", menuName = "GeminiStone/Card Definition")]
 public class CardDefinition: ScriptableObject
@@ -34,7 +35,7 @@ public class CardDefinition: ScriptableObject
     [Header("Passive Effects (光环逻辑)")]
     [Tooltip("随从在场时持续生效的逻辑效果 (如: 战吼双倍, 法术减费)")]
     public List<PassiveEffect> passives;
-    
+    public bool hasPassive;
     [Header("Innate Statuses (自带状态)")]
     [Tooltip("随从出生时自动获得的状态 (如: 嘲讽, 圣盾)")]
     //public List<StatusConfig> initialStatuses; 

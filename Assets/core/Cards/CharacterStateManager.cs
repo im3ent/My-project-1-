@@ -91,9 +91,9 @@ public class CharacterStateManager : MonoBehaviour
     /// 计算卡牌的最终费用
     /// (遍历所有 Buff，应用减费/加费逻辑)
     /// </summary>
-    public int GetCalculatedCost(RuntimeCard card)
+    public int GetCalculatedCost(RuntimeItem item)
     {
-        int finalCost = card.Data.manaCost;
+        int finalCost = item.Data.manaCost;
 
         foreach (var status in statusList)
         {
@@ -106,7 +106,7 @@ public class CharacterStateManager : MonoBehaviour
 
             // 让每个 Buff 有机会修改费用
             // 需要 StatusEffect 定义: virtual int ModifyCost(...)
-            finalCost = status.Data.ModifyCost(status, card, finalCost);
+            finalCost = status.Data.ModifyCost(status, item, finalCost);
         }
 
         return Mathf.Max(0, finalCost); // 费用不能小于 0
@@ -132,16 +132,13 @@ public class CharacterStateManager : MonoBehaviour
             if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
 
             // A. 随从自带的光环
-            if (sourceUnit.cardData != null && sourceUnit.cardData.passives != null)
+            if (sourceUnit.inventoryPassives == null) continue;
+            foreach (var ctx in sourceUnit.GetActivePassives())
             {
-                foreach (var passive in sourceUnit.cardData.passives)
-                {
-                    if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
-                    {
-                        totalAdditive += passive.GetAttackAdditive(sourceUnit);
-                        totalMultiplier *= passive.GetAttackMultiplier(sourceUnit);
-                    }
-                }
+                var passive = ctx.effect;
+                if (!passive.ShouldTrigger(sourceUnit, ownerCharacter)) continue;
+                totalAdditive += passive.GetAttackAdditive(sourceUnit);
+                totalMultiplier *= passive.GetAttackMultiplier(sourceUnit);
             }
 
             // B. (可选) 装备提供的光环
@@ -168,18 +165,14 @@ public class CharacterStateManager : MonoBehaviour
         foreach (var sourceUnit in allUnits)
         {
             if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
-
-            if (sourceUnit.cardData != null && sourceUnit.cardData.passives != null)
+            
+            foreach (var ctx in sourceUnit.GetActivePassives())
             {
-                foreach (var passive in sourceUnit.cardData.passives)
-                {
-                    if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
-                    {
-                        // ⚠️ 待 PassiveEffect 更新
-                        totalAdditive += passive.GetHealthAdditive(sourceUnit);
-                        totalMultiplier *= passive.GetHealthMultiplier(sourceUnit);
-                    }
-                }
+                var passive = ctx.effect;
+                if (!passive.ShouldTrigger(sourceUnit, ownerCharacter)) continue;
+                totalAdditive += passive.GetHealthAdditive(sourceUnit);
+                totalMultiplier *= passive.GetHealthMultiplier(sourceUnit);
+                
             }
         }
         float finalVal = (baseMaxHealth + totalAdditive) * totalMultiplier;
@@ -189,10 +182,10 @@ public class CharacterStateManager : MonoBehaviour
     // 法术伤害计算 (Spell Damage) 
     // ========================================================================
 
-    public int GetModifiedSpellDamage(int baseDamage, RuntimeCard card)
+    public int GetModifiedSpellDamage(int baseDamage, RuntimeItem item)
     {
         // 只有法术卡才享受法伤加成 (根据你的游戏规则调整)
-        if (card.Data.cardType != CardType.Spell) return baseDamage;
+        if (item.Data.cardType != CardType.Spell) return baseDamage;
 
         int totalAdditive = 0;
         float totalMultiplier = 1.0f;
@@ -212,17 +205,12 @@ public class CharacterStateManager : MonoBehaviour
         foreach (var sourceUnit in allUnits)
         {
             if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
-
-            if (sourceUnit.cardData != null && sourceUnit.cardData.passives != null)
+            foreach (var ctx in sourceUnit.GetActivePassives())
             {
-                foreach (var passive in sourceUnit.cardData.passives)
-                {
-                    if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
-                    {
-                        totalAdditive += passive.GetSpellDamageAdditive(sourceUnit);
-                        totalMultiplier *= passive.GetSpellDamageMultiplier(sourceUnit);
-                    }
-                }
+                var passive = ctx.effect;
+                if (!passive.ShouldTrigger(sourceUnit, ownerCharacter)) continue;
+                totalAdditive += passive.GetSpellDamageAdditive(sourceUnit);
+                totalMultiplier *= passive.GetSpellDamageMultiplier(sourceUnit);
             }
         }
 
@@ -250,14 +238,12 @@ public class CharacterStateManager : MonoBehaviour
         foreach (var sourceUnit in GameManager.Instance.allUnits)
         {
             if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
-            if (sourceUnit.cardData?.passives == null) continue;
-
-            foreach (var passive in sourceUnit.cardData.passives)
+            
+            foreach (var ctx in sourceUnit.GetActivePassives())
             {
-                if (passive.ShouldTrigger(sourceUnit, ownerCharacter))
-                {
-                    total += passive.GetSpellDamageAdditive(sourceUnit);
-                }
+                var passive = ctx.effect;
+                if (!passive.ShouldTrigger(sourceUnit, ownerCharacter)) continue;
+                total += passive.GetSpellDamageAdditive(sourceUnit);
             }
         }
         return total;

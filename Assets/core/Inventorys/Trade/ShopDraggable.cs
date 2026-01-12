@@ -5,16 +5,15 @@ using UnityEngine.UI;
 
 public class ShopDraggable :  Draggable
 {
-    private ShopItem shopItem;
+    public ShopItem shopItem;
     private Image ghostImage; // 拖拽时的临时图标
     private RectTransform ghostRect;
-    private Canvas canvas;
     private CardDefinition data;
-    
+    private CanvasGroup cg;
     private void Awake()
     {
+        cg = GetComponent<CanvasGroup>();
         shopItem = GetComponent<ShopItem>();
-        canvas = GetComponentInParent<Canvas>(); // 获取商店的 Canvas
         ghostImage = ShopManager.Instance.globalDragGhost;
         ghostRect = ghostImage.GetComponent<RectTransform>();
     }
@@ -38,6 +37,7 @@ public class ShopDraggable :  Draggable
         ghostImage.sprite = shopItem.iconImage.sprite;
         ghostImage.gameObject.SetActive(true);
   
+        cg.alpha = 0;             // 透明度设为 0 (看不见)
 
         // ✨✨✨ 1. 计算触点偏移 ✨✨✨
         // 算出鼠标当前位置，减去物品当前位置，得到偏移向量
@@ -83,6 +83,8 @@ public class ShopDraggable :  Draggable
         {
             TryBuyAndPlace(bestIndex);
         }
+        
+        cg.alpha = 1;    
     }
 
     private void TryBuyAndPlace(int targetIndex)
@@ -96,17 +98,17 @@ public class ShopDraggable :  Draggable
         // 或者我们可以偷懒，直接调用 AddItem，但那样不能指定位置
             
         // 为了实现"拖到哪放哪"，我们需要手动构建 RuntimeCard
-        var newCard = new RuntimeCard(data, null);
+        var newCard = new RuntimeItem(data, null);
             
         // 检查该位置能否放下
-        if (InventoryManager.Instance.CanPlaceItem(targetIndex, data.width, data.height))
+        if (InventoryManager.Instance.CanPlaceItem(targetIndex, data.width, data.height, data.shapeOffsets))
         {
             // 生成真物品
             InventoryManager.Instance.CreateItemAt(newCard, targetIndex);
                 
             // 扣钱
             MoneyManager.Instance.SpendGold(price);
-                
+            Destroy(gameObject);
             Debug.Log("拖拽进货成功！");
         }
         else

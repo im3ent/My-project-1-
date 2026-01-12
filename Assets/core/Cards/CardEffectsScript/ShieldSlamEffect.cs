@@ -14,20 +14,20 @@ public class ShieldSlamEffect : CardEffect
         // 伤害 = 施法者的当前护甲值
         var casterArmor = ctx.caster.currentArmor;
 
-        var finalDamage = GameManager.Instance.GetModifiedDamage(ctx.sourceRuntimeCard, casterArmor);
+        var finalDamage = GameManager.Instance.GetModifiedDamage(ctx.sourceRuntimeItem, casterArmor);
 
         var damageInfo = new DamageInfo(finalDamage, damageType, ctx.caster);
         ctx.mainTarget.TakeDamage(damageInfo);
         return animateDuration;
     }
-    public override bool GetDescriptionValue(RuntimeCard card, out int baseVal, out int finalVal)
+    public override bool GetDescriptionValue(RuntimeItem item, out int baseVal, out int finalVal)
     {
         // 1. 直接从 Context 里拿施法者 (预览时，施法者通常就是玩家)
         // 防御性编程：ctx.Caster 理论上不为空，但判一下更安全
-        var armor = (card.Owner != null) ? card.Owner.currentArmor : 0;
+        var armor = (item.Owner != null) ? item.Owner.currentArmor : 0;
         baseVal = armor;
         // 直接在这里调用 GM 的计算公式，把逻辑封装在效果内部
-        finalVal = GameManager.Instance.GetModifiedDamage(card, baseVal);
+        finalVal = GameManager.Instance.GetModifiedDamage(item, baseVal);
         return true; // 告诉 UI：我有数值，请填坑
     }
 }

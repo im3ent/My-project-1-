@@ -17,8 +17,8 @@ public class ApplyBuffEffect : CardEffect
             Debug.LogError($"[ApplyBuffEffect] buffData is null! Please assign a StatusEffect in the Inspector.");
             return animateDuration;
         }
-// 1. 确定我们要 Buff 的目标列表
-      var targets = new List<CharacterBase>();
+        // 1. 确定我们要 Buff 的目标列表
+        var targets = new List<CharacterBase>();
 
         switch (targetType)
         {

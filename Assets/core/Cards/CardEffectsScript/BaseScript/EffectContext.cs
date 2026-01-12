@@ -7,9 +7,9 @@ public class EffectContext
     // 1. 基础信息 (进厂时就有的)
     public CharacterBase caster;       // 谁打的牌
     public CharacterBase mainTarget;   // 玩家鼠标选的目标 (如果有)
-    public RuntimeCard sourceRuntimeCard;
+    public RuntimeItem sourceRuntimeItem;
     
-    public CardDefinition SourceCard => sourceRuntimeCard?.Data;
+    public CardDefinition SourceCard => sourceRuntimeItem?.Data;
     
     public int repeatCount = 0;
     
@@ -33,10 +33,10 @@ public class EffectContext
     }
     
     // 构造函数
-    public EffectContext(CharacterBase caster, CharacterBase target, RuntimeCard runtimeCard)
+    public EffectContext(CharacterBase caster, CharacterBase target, RuntimeItem runtimeItem)
     {
         this.caster = caster;
         mainTarget = target;
-        this.sourceRuntimeCard = runtimeCard;
+        this.sourceRuntimeItem = runtimeItem;
     }
 }

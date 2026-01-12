@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 using DG.Tweening;
-public class CharacterBase : MonoBehaviour
+public class CharacterBase : MonoBehaviour,IPassiveContainer
 {
     [Header("基础属性 (Base Stats)")]
     public int baseAttack;
@@ -19,28 +19,23 @@ public class CharacterBase : MonoBehaviour
     public int currentAttack;
     
     private bool isDying = false;
+    [SerializeField]
+    public List<PassiveContext> inventoryPassives = new();
+    public List<PassiveEffect> nativePassives = new();
     [Header("Data Reference")]
     public CardDefinition cardData;
-    public RuntimeCard sourceRuntimeCard;
+    public RuntimeItem sourceRuntimeItem;
 
     
     private bool isInitialized = false;
-
-
-    public void ApplyBuff(int atkMod, int healthMod)
-    {
-        // 第一步：只管改基础数值
-        baseAttack += atkMod;
-        baseMaxHealth += healthMod;
-        
-        RefreshStats(); 
-    }
+    
     
     [Header("视觉反馈")]
     public GameObject floatingTextPrefab;
     
     private SpriteRenderer spriteRenderer;
-    protected virtual void Awake() {
+    protected virtual void Awake() 
+    {
         spriteRenderer = GetComponent<SpriteRenderer>();
     }
     void Start()
@@ -49,19 +44,19 @@ public class CharacterBase : MonoBehaviour
         // 这里的 baseMaxHealth == 0 是为了防止 SpawnUnitEffect 已经初始化过一次了
         if (cardData != null && baseMaxHealth == 0)
         {
-            Initialize (new RuntimeCard(cardData, this));
+            Initialize (new RuntimeItem(cardData, this));
         }
     }
-    public virtual void Initialize(RuntimeCard sourceCard) 
+    public virtual void Initialize(RuntimeItem sourceItem) 
     {
         if (isInitialized) return; // 如果已经初始化过，就别再动了
         // 1. 存蓝图
-        this.sourceRuntimeCard = sourceCard;
-        this.cardData = sourceCard.Data;
+        this.sourceRuntimeItem = sourceItem;
+        this.cardData = sourceItem.Data;
 
         // 2. 设定“地基”（Base）
-        baseMaxHealth = sourceCard.health; // 👈 读实例数据！
-        baseAttack = sourceCard.attack;
+        baseMaxHealth = sourceItem.health; // 👈 读实例数据！
+        baseAttack = sourceItem.attack;
         // 3. 设定“初始状态”（Current）
         // 刚出生时，如果没有光环，当前值就应该等于基础值
 
@@ -90,6 +85,7 @@ public class CharacterBase : MonoBehaviour
         isInitialized = true;
         RefreshStats();
     }
+
 
     // --- 定义动作 ---
     public virtual void TakeDamage(DamageInfo info)
@@ -263,4 +259,45 @@ public class CharacterBase : MonoBehaviour
         // 重要！我死了，光环消失，所有人重新计算
         GameManager.Instance.OnBoardChanged();
     }
+    public void ClearInventoryPassives()
+    {
+        // 如果你有角色的“天赋树”被动，不要在这里清空它们！
+        // 建议把 globalPassives 专门用来存“背包给的被动”
+        // 或者把被动分成两个 list：nativePassives (天赋) 和 inventoryPassives (背包)
+        
+        inventoryPassives.Clear(); 
+    }
+    // --- 接口实现 ---
+    
+    public void AddTemporaryPassive(PassiveEffect effect = null, RuntimeItem source = null)
+    {
+         inventoryPassives.Add(new PassiveContext(effect, source));
+    }
+
+    public void RemovePassive(PassiveEffect effect)
+    {
+        // 如果需要移除，通常是根据 Effect 的引用来删
+        inventoryPassives.RemoveAll(ap => ap.effect == effect);
+    }
+
+    public IEnumerable<PassiveContext> GetSourcePassives()
+    {
+        return Enumerable.Empty<PassiveContext>();
+    }
+
+    public IEnumerable<PassiveContext> GetActivePassives()
+    {
+        // 1. 返回天生自带的被动 (包装成 source = null，因为没有来源卡牌)
+        foreach (var p in nativePassives)
+        {
+            yield return new PassiveContext(p, null);
+        }
+
+        // 2. 返回从背包实时同步过来的被动
+        foreach (var ap in inventoryPassives)
+        {
+            yield return ap;
+        }
+    }
+
 }

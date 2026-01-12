@@ -17,11 +17,11 @@ public abstract class CardEffect : ScriptableObject
     /// <summary>
     /// 获取用于 UI 描述的数值
     /// </summary>
-    /// <param name="card">运行时的卡牌实例 (包含 Data, Owner 和 动态数值)</param>
+    /// <param name="item">运行时的卡牌实例 (包含 Data, Owner 和 动态数值)</param>
     /// <param name="baseVal">基础值 (配表填的)</param>
     /// <param name="finalVal">计算后的最终值 (加了法强/Buff的)</param>
     /// <returns>如果有数值返回 true，否则 false</returns>
-    public virtual bool GetDescriptionValue(RuntimeCard card, out int baseVal, out int finalVal)
+    public virtual bool GetDescriptionValue(RuntimeItem item, out int baseVal, out int finalVal)
     {
         baseVal = 0;
         finalVal = 0;

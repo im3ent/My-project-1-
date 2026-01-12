@@ -12,6 +12,7 @@ public class StandardStatBuff : StatusEffect
 
     public override int GetAttackAdditive(StatusInstance instance)
     {
+        
         // 数值 = 单层加成 * 层数
         return attackBonus * instance.Stacks;
     }

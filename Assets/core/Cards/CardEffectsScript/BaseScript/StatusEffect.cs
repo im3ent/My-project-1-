@@ -59,7 +59,7 @@ public abstract class StatusEffect : ScriptableObject
     // =================================================
 
     // 修改卡牌费用 (如：下张法术减费)
-    public virtual int ModifyCost(StatusInstance instance, RuntimeCard card, int currentCost) 
+    public virtual int ModifyCost(StatusInstance instance, RuntimeItem item, int currentCost) 
     { 
         return currentCost; 
     }

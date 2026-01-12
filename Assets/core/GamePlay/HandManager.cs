@@ -63,7 +63,7 @@ public class HandManager : MonoBehaviour {
         var newCardObj = Instantiate(cardPrefab, handContainer);
         var display = newCardObj.GetComponent<CardDisplay>();
         if (display != null) {
-            display.Bind(new RuntimeCard(nextCard,caster));
+            display.Bind(new RuntimeItem(nextCard,caster));
         }
         
         // A. 先把卡牌缩小成 0 (看不见)
