@@ -76,7 +76,7 @@ public class GameManager : MonoBehaviour
     // --- 阶段 2: 玩家点击结束回合 (绑定给按钮) ---
     public void OnEndTurnButton() {
         if (!isPlayerTurn) return; // 防止狂点
-
+   
         // 进入敌人回合
         StartCoroutine(PlayerTurnEnding());
     }
@@ -204,6 +204,7 @@ public class GameManager : MonoBehaviour
             }
         }
         OnBoardChanged();
+        
     }
     
     public bool PlayCard(RuntimeItem runtimeItem, CharacterBase target)
@@ -231,6 +232,7 @@ public class GameManager : MonoBehaviour
         }
 
         UseMana(GetModifiedCost(runtimeItem));
+
         
         var caster = runtimeItem.Owner;
 
@@ -283,12 +285,10 @@ public class GameManager : MonoBehaviour
         var finalDamage = baseDamage;
         // 如果没有状态管理器，直接返回基础值
         if (stateManager == null) return baseDamage;
+        
 
-        //if (card.Data.cardType == CardType.Spell)
-        {
-            finalDamage = stateManager.GetModifiedSpellDamage(finalDamage, item);
-        }
-        return stateManager.GetModifiedOutgoingDamage(finalDamage);
+        return stateManager.GetModifiedDamage(finalDamage, item.Data.type);
+
     }
     
     // 获取某张卡当前的实际费用
@@ -344,6 +344,7 @@ public class GameManager : MonoBehaviour
         {
             if(unit != null) unit.RefreshStats();
         }
+        OnManaChanged?.Invoke();
     }
 
     

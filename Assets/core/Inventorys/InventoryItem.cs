@@ -40,11 +40,8 @@ public class InventoryItem : MonoBehaviour
 
         // 3. (可选) 根据格数调整 UI 大小
         // 假设每个格子是 100x100，这里可以让物品真的变成 200x300
-        SetSize(new Vector2(Width * 100, Height * 100)); 
+        GetComponent<RectTransform>().sizeDelta=(new Vector2(Width * 100, Height * 100)); 
     }
 
-    private void SetSize(Vector2 size)
-    {
-        GetComponent<RectTransform>().sizeDelta = size;
-    }
+    
 }

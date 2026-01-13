@@ -21,21 +21,17 @@ public class CharacterStateManager : MonoBehaviour
         ownerCharacter = GetComponent<CharacterBase>();
     }
 
-    // ========================================================================
-    // 1. 增删查改 (CRUD)
-    // ========================================================================
-
     /// <summary>
     /// 施加状态
     /// </summary>
     /// <param name="effectData">状态的配置数据 (SO)</param>
+    /// <param name="caster"></param>
     /// <param name="stacks">层数</param>
-    public void ApplyStatus(StatusEffect effectData, int stacks)
+    public void ApplyStatus(StatusEffect effectData,CharacterBase caster, int stacks)
     {
         // ✨ 安全检查：防止传入 null 导致后续崩溃
         if (effectData == null)
         {
-            Debug.LogError($"[CharacterStateManager] ApplyStatus called with null effectData on {ownerCharacter?.name ?? "Unknown"}!");
             return;
         }
 
@@ -55,7 +51,7 @@ public class CharacterStateManager : MonoBehaviour
         else
         {
             // 创建新的运行时实例
-            var newInstance = new StatusInstance(effectData, this, stacks);
+            var newInstance = new StatusInstance(effectData, this, caster, stacks);
             statusList.Add(newInstance);
         }
 
@@ -93,14 +89,12 @@ public class CharacterStateManager : MonoBehaviour
     /// </summary>
     public int GetCalculatedCost(RuntimeItem item)
     {
-        int finalCost = item.Data.manaCost;
-
+        int finalCost = item.manaCost;
         foreach (var status in statusList)
         {
             // ✨ 防御性检查：跳过损坏的 StatusInstance
             if (status.Data == null)
             {
-                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Skipping...");
                 continue;
             }
 
@@ -112,166 +106,51 @@ public class CharacterStateManager : MonoBehaviour
         return Mathf.Max(0, finalCost); // 费用不能小于 0
     }
     //// 属性计算核心 
-    public int GetCalculatedAttack(int baseAttack)
-    {
-        var totalAdditive = 0;        // 加法池
-        var totalMultiplier = 1.0f; // 乘法池
-
-        // 1. 自身的 Buff (StatusEffect)
-        // 比如：王者祝福 (+4/+4)
-        foreach (var status in statusList)
-        {
-            totalAdditive += status.Data.GetAttackAdditive(status);
-            totalMultiplier *= status.Data.GetAttackMultiplier(status);
-        }
-
-        // 2. 全场的光环 (PassiveEffect)
-        var allUnits = GameManager.Instance.allUnits;
-        foreach (var sourceUnit in allUnits)
-        {
-            if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
-
-            // A. 随从自带的光环
-            if (sourceUnit.inventoryPassives == null) continue;
-            foreach (var ctx in sourceUnit.GetActivePassives())
-            {
-                var passive = ctx.effect;
-                if (!passive.ShouldTrigger(sourceUnit, ownerCharacter)) continue;
-                totalAdditive += passive.GetAttackAdditive(sourceUnit);
-                totalMultiplier *= passive.GetAttackMultiplier(sourceUnit);
-            }
-
-            // B. (可选) 装备提供的光环
-            // var equipManager = sourceUnit.GetComponent<EquipmentManager>(); ...
-        }
-            // --- C. 最终计算 ---
-        var finalVal = (baseAttack + totalAdditive) * totalMultiplier;
-        return Mathf.Max(0, Mathf.FloorToInt(finalVal));
-    }
-    public int GetCalculatedMaxHealth(int baseMaxHealth)
-    {
-        var totalAdditive = 0;
-        var totalMultiplier = 1.0f;
-
-        // 1. 自身的 Buff
-        foreach (var status in statusList)
-        {
-            totalAdditive += status.Data.GetHealthAdditive(status);
-            totalMultiplier *= status.Data.GetHealthMultiplier(status);
-        }
-
-        // 2. 全场的光环
-        var allUnits = GameManager.Instance.allUnits;
-        foreach (var sourceUnit in allUnits)
-        {
-            if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
-            
-            foreach (var ctx in sourceUnit.GetActivePassives())
-            {
-                var passive = ctx.effect;
-                if (!passive.ShouldTrigger(sourceUnit, ownerCharacter)) continue;
-                totalAdditive += passive.GetHealthAdditive(sourceUnit);
-                totalMultiplier *= passive.GetHealthMultiplier(sourceUnit);
-                
-            }
-        }
-        float finalVal = (baseMaxHealth + totalAdditive) * totalMultiplier;
-        return Mathf.Max(0, Mathf.FloorToInt(finalVal));
-    }
-    
-    // 法术伤害计算 (Spell Damage) 
     // ========================================================================
-
-    public int GetModifiedSpellDamage(int baseDamage, RuntimeItem item)
+    /// <summary>
+    /// ✨ 核心公式：计算最终法术/元素伤害
+    /// 公式 = (基础伤 + Flat) * (1 + Increased总和) * (More连乘)
+    /// </summary>
+    public int GetModifiedDamage(int baseDamage , StatsType type)
     {
-        // 只有法术卡才享受法伤加成 (根据你的游戏规则调整)
-        if (item.Data.cardType != CardType.Spell) return baseDamage;
 
-        int totalAdditive = 0;
-        float totalMultiplier = 1.0f;
+        int totalFlat = 0;           // 桶1：数值
+        float totalIncreased = 0f;   // 桶2：加法百分比
+        float totalMore = 1.0f;      // 桶3：独立乘数
 
-        // 1. 自身基础法强 (CharacterBase 里的属性)
-        totalAdditive += ownerCharacter.baseSpellPower;
-
-        // 2. Status Buff (如：法术药水)
+        // 1. 遍历自身的所有 Buff (StatusList)
         foreach (var status in statusList)
         {
-            totalAdditive += status.Data.GetSpellDamageAdditive(status);
-            totalMultiplier *= status.Data.GetSpellDamageMultiplier(status);
+            if (status.Data == null) continue;
+            
+            totalFlat += status.Data.GetStatsFlat(status,type);
+            totalIncreased += status.Data.GetStatsIncreased(status,type);
+            totalMore *= status.Data.GetStatsMore(status,type);
         }
 
-        // 3. Passive Aura (如：玛里苟斯 +5法强)
-        var allUnits = GameManager.Instance.allUnits;
-        foreach (var sourceUnit in allUnits)
+        // 2. 遍历场上所有被动光环 (Global Passives)
+        // (保持你原有的光环遍历逻辑，只是换成新的三个接口)
+        foreach (var unit in GameManager.Instance.allUnits)
         {
-            if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
-            foreach (var ctx in sourceUnit.GetActivePassives())
+            if (unit == null || unit.currentHealth <= 0) continue;
+            foreach (var ctx in unit.GetActivePassives())
             {
-                var passive = ctx.effect;
-                if (!passive.ShouldTrigger(sourceUnit, ownerCharacter)) continue;
-                totalAdditive += passive.GetSpellDamageAdditive(sourceUnit);
-                totalMultiplier *= passive.GetSpellDamageMultiplier(sourceUnit);
+                if (!ctx.effect.ShouldTrigger(unit, ownerCharacter)) continue;
+
+                // 假设 PassiveEffect 也加了这三个接口
+                totalFlat += ctx.effect.GetSpellDamageFlat(unit,type);
+                totalIncreased += ctx.effect.GetSpellDamageIncreased(unit,type);
+                totalMore *= ctx.effect.GetSpellDamageMore(unit,type);
             }
         }
+        
+        // 3. 执行 RPG 伤害公式
+        // (10 + 5) * (1 + 0.5) * 2.0 = 45
+        float finalValue = (baseDamage + totalFlat) * (1.0f + totalIncreased) * totalMore;
 
-        float finalVal = (baseDamage + totalAdditive) * totalMultiplier;
-        return Mathf.Max(0, Mathf.FloorToInt(finalVal));
+        return Mathf.Max(0, Mathf.FloorToInt(finalValue));
     }
     
-    // Assets/core/Cards/CharacterStateManager.cs
-
-    /// <summary>
-    /// ✨ 新增：只计算当前总法术强度加成
-    /// </summary>
-    /// <param name="baseVal"></param>
-    public int GetTotalSpellPower(int baseVal)
-    {
-        int total = baseVal; // 这里的 spellPower 应该是你初始自带的(如有)
-
-        // 1. 统计 Buff 提供的法强
-        foreach (var status in statusList)
-        {
-            total += status.Data.GetSpellDamageAdditive(status);
-        }
-
-        // 2. 统计全场光环提供的法强
-        foreach (var sourceUnit in GameManager.Instance.allUnits)
-        {
-            if (sourceUnit == null || sourceUnit.currentHealth <= 0) continue;
-            
-            foreach (var ctx in sourceUnit.GetActivePassives())
-            {
-                var passive = ctx.effect;
-                if (!passive.ShouldTrigger(sourceUnit, ownerCharacter)) continue;
-                total += passive.GetSpellDamageAdditive(sourceUnit);
-            }
-        }
-        return total;
-    }
-    /// <summary>
-    /// ✨ 你要求的：计算最终造成的伤害
-    /// (用于处理 "力量"、"虚弱" 等 Buff)
-    /// </summary>
-    public int GetModifiedOutgoingDamage(int baseDamage)
-    {
-        int finalDamage = baseDamage;
-
-        foreach (var status in statusList)
-        {
-            // ✨ 防御性检查
-            if (status.Data == null)
-            {
-                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Skipping...");
-                continue;
-            }
-
-            // 让每个 Buff 有机会修改输出伤害
-            // 需要 StatusEffect 定义: virtual int ModifyOutgoingDamage(...)
-            finalDamage = status.Data.ModifyOutgoingDamage(status, finalDamage);
-        }
-
-        return Mathf.Max(0, finalDamage);
-    }
 
     /// <summary>
     /// 计算最终受到的伤害
@@ -286,7 +165,7 @@ public class CharacterStateManager : MonoBehaviour
             // ✨ 防御性检查
             if (status.Data == null)
             {
-                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Skipping...");
+                
                 continue;
             }
 
@@ -307,21 +186,22 @@ public class CharacterStateManager : MonoBehaviour
     /// </summary>
     public void OnTurnStart()
     {
-        // 倒序遍历，因为 Buff 可能会在执行过程中移除自己 (比如中毒致死，或者过期)
-        for (int i = statusList.Count - 1; i >= 0; i--)
+        // 这样无论 Buff 内部怎么删除、怎么触发死亡、怎么修改原始 list，循环都不会崩
+        var snapshot = new List<StatusInstance>(statusList);
+
+        foreach (var instance in snapshot)
         {
-            var instance = statusList[i];
-            // ✨ 防御性检查
-            if (instance.Data == null)
-            {
-                Debug.LogWarning($"[CharacterStateManager] Found StatusInstance with null Data on {ownerCharacter?.name ?? "Unknown"}! Removing corrupted instance...");
-                statusList.RemoveAt(i);
-                continue;
-            }
-            instance.Data.OnTurnStart(instance);
-        }
+            // 双重保险：确保原始列表里还有这个 Buff (防止被前面的 Buff 顺手移除了)
+            if (!statusList.Contains(instance)) continue;
         
-        // 统一刷新一次
+            // 执行逻辑
+            if (instance.Data != null)
+            {
+                instance.Data.OnTurnStart(instance);
+            }
+        }
+    
+        // 统一刷新一次 UI，而不是每扣一层就刷一次
         NotifyStateChanged();
     }
 

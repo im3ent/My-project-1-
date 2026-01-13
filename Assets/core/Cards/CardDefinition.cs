@@ -17,7 +17,7 @@ public class CardDefinition: ScriptableObject
     public int health;
     
     public CardType cardType;
-    
+    public StatsType type;
     [Header("背包占位设置")]
     [Range(1, 4)] public int width = 1;
     [Range(1, 4)] public int height = 1;
@@ -48,6 +48,7 @@ public class CardDefinition: ScriptableObject
 }
 
 public enum CardType { Minion, Spell, Weapon }
+
 [System.Serializable]
 public class StatusConfig
 {

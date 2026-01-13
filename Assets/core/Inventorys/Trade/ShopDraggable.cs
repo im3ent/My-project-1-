@@ -98,13 +98,13 @@ public class ShopDraggable :  Draggable
         // 或者我们可以偷懒，直接调用 AddItem，但那样不能指定位置
             
         // 为了实现"拖到哪放哪"，我们需要手动构建 RuntimeCard
-        var newCard = new RuntimeItem(data, null);
+       
             
         // 检查该位置能否放下
         if (InventoryManager.Instance.CanPlaceItem(targetIndex, data.width, data.height, data.shapeOffsets))
         {
             // 生成真物品
-            InventoryManager.Instance.CreateItemAt(newCard, targetIndex);
+            InventoryManager.Instance.CreateItemAt(shopItem.runtimeToSell, targetIndex);
                 
             // 扣钱
             MoneyManager.Instance.SpendGold(price);

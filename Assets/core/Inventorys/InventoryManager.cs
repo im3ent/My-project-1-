@@ -78,7 +78,7 @@ public class InventoryManager : MonoBehaviour
     void GenerateSlots()
     {
         // 清理旧格子
-        foreach (Transform child in gridParent) Destroy(child.gameObject);
+        foreach (Transform child in gridParent) DestroyImmediate(child.gameObject);
         slotRects.Clear();
 
         for (int i = 0; i < totalSlots; i++)
@@ -174,6 +174,7 @@ public class InventoryManager : MonoBehaviour
             pos.z = 0; 
             itemRect.localPosition = pos;
         }
+        SetDirty();
     }
 
     // --- 核心功能 2: 拖拽结束处理 ---
@@ -280,7 +281,6 @@ public class InventoryManager : MonoBehaviour
             // 放置并更新数据
             PlaceItem(script, i);
             //启用CheckNeighbor检查item四周
-
             return true;
         }
         Debug.Log("背包已满，无法添加物品");
@@ -298,7 +298,6 @@ public class InventoryManager : MonoBehaviour
 
         PlaceItem(script, slotIndex);
         //启用CheckNeighbor检查item四周
-        SetDirty();
         
     }
 
@@ -516,13 +515,13 @@ public class InventoryManager : MonoBehaviour
     {
         if (inventoryDirty)
         {
-            //UpdateAllAuraEffects();
+            RefreshInventoryPassives();
             inventoryDirty = false;
         }
     }
 
 
-    private void Step1_CalculateI2IPassives()
+    private void RefreshInventoryPassives()
     {
         // 1. 获取当前背包所有物品
         allInventoryItems.Clear();
@@ -562,7 +561,6 @@ public class InventoryManager : MonoBehaviour
            
         }
         
-        
         player.ClearInventoryPassives();
         foreach (var item in allInventoryItems)
         {
@@ -600,5 +598,5 @@ public class InventoryManager : MonoBehaviour
             _ => System.Array.Empty<InventoryItem>()
         };
     }
-
+    
 }

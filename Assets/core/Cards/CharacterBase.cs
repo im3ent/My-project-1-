@@ -102,13 +102,13 @@ public class CharacterBase : MonoBehaviour,IPassiveContainer
 
         // --- 2. 处理 护甲 (Armor) ---
         // 只有当伤害类型是“物理” 且 没说要“无视护甲”时，才计算护甲
-        if (info.type == DamageType.Physical && !info.ignoreArmor)
+        if (info.type == StatsType.Physical && !info.ignoreArmor)
         {
             finalDamage -= currentArmor;
             if (finalDamage < 0) finalDamage = 0; // 护甲不能回血
         }
-        // 如果是 DamageType.Magical，也许你会去减魔抗...
-        // 如果是 DamageType.True，上面两个 if 都进不去，直接造成原始伤害
+        // 如果是 StatsType.Magical，也许你会去减魔抗...
+        // 如果是 StatsType.True，上面两个 if 都进不去，直接造成原始伤害
 
         // --- ✨ 新增动画代码开始 ✨ ---
         
@@ -165,9 +165,8 @@ public class CharacterBase : MonoBehaviour,IPassiveContainer
         {
             // ✨✨✨ 核心变化：直接问管家要最终结果 ✨✨✨
             // 管家已经把 基础值 + Buff + 光环 全部算好了
-            currentAttack = stateManager.GetCalculatedAttack(baseAttack);
-            currentMaxHealth = stateManager.GetCalculatedMaxHealth(baseMaxHealth);
-            spellPower = stateManager.GetTotalSpellPower(baseSpellPower);
+            currentAttack = stateManager.GetModifiedDamage(baseAttack,StatsType.Physical);
+            currentMaxHealth = stateManager.GetModifiedDamage(baseMaxHealth , StatsType.Health);
         }
         else
         {
