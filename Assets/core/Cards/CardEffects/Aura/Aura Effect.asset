@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa6ad18fe16d3bc4f93276f787829dc0, type: 3}
+  m_Name: Aura Effect
+  m_EditorClassIdentifier: Assembly-CSharp::AuraEffect
+  description: "{0} <color=green>(\u5C42\u6570: {1})</color>"
+  scope: 1
+  unlockCondition: {fileID: 0}
+  value: 1

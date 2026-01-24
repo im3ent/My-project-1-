@@ -1,4 +1,5 @@
-﻿using core.UI;
+﻿using System;
+using core.UI;
 using DG.Tweening;
 using UnityEngine;
 using UnityEngine.EventSystems; // 必须引用这个！
@@ -18,13 +19,20 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     [HideInInspector] public bool isDragging = false; // 新增标记
     // 我们需要找到 Canvas（画布），因为拖拽时要相对于画布移动
     private Canvas _mainCanvas;
+    private Camera _mainCamera; // ✨ 缓存摄像机引用，避免每帧调用 Camera.main
 
     private void Awake()
     {
         _canvasGroup = GetComponent<CanvasGroup>();
         _cardDisplay = GetComponent<CardDisplay>();
         // 找场景里的 Canvas (通常是根 Canvas)
+       
+    }
+
+    private void Start()
+    {
         _mainCanvas = GetComponentInParent<Canvas>();
+        _mainCamera = Camera.main; // ✨ 只在 Start 时获取一次
     }
 
     // --- 1. 开始拖拽 ---
@@ -64,17 +72,17 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
                 eventData.pressEventCamera,
                 out var globalMousePos)) return;
         globalMousePos.z = 0; 
-            
-        if (_cardDisplay.runtimeItem.Data.needsTarget)
+        
+        if (_cardDisplay.runtimeItem.data.needsTarget)
         {
             if (Mouse.current.position.ReadValue().y > Screen.height * triggerLine)
             {
                 if (!isLockedMode)
                 {
                     isLockedMode = true;
-                    transform.DOMove(transform.position + Vector3.up * 1.0f, 0.2f);
+                    transform.DOMove(transform.position + Vector3.down * .5f, 0.5f);
                 }
-                // 旋转指向：让卡牌的“头”对着鼠标
+                // 旋转指向：让卡牌的"头"对着鼠标
                 var direction = globalMousePos - transform.position;
                 var angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
                 // 注意：UI默认向上是90度，所以这里可能需要 -90 或根据你的资源调整
@@ -100,21 +108,53 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
         }
 
     }
+    
+    /// <summary>
+    /// 🎯 检测鼠标是否在屏幕外（左右或下方，上方允许因为那是打牌区）
+    /// </summary>
+    private bool IsOutOfScreen(Vector2 screenPos)
+    {
+        // 留一点边距防止误触
+        float margin = 10f;
+        
+        // 左右边界
+        if (screenPos.x < margin || screenPos.x > Screen.width - margin)
+            return true;
+        
+        // 下边界（上边界不限制，那是打牌区）
+        if (screenPos.y < margin)
+            return true;
+        
+        return false;
+    }
 
     // --- 3. 拖拽结束 (松手) ---
     public void OnEndDrag(PointerEventData eventData)
     {
         if (_originalParent == null) return;
         _canvasGroup.blocksRaycasts = true;
+        
+        // 🎯 如果鼠标在屏幕外（左右或下方），自动归位
+        var mousePos = Mouse.current.position.ReadValue();
+        if (IsOutOfScreen(mousePos))
+        {
+            ReturnToHand();
+            isDragging = false;
+            isLockedMode = false;
+            transform.DOKill();
+            transform.rotation = Quaternion.identity;
+            DragArrow.Instance.Hide();
+            return;
+        }
 
         // --- 逻辑分支 ---
         // 1. 获取卡牌信息
-        var card = _cardDisplay.runtimeItem.Data;
+        var card = _cardDisplay.runtimeItem.data;
         // 2. 如果不需要目标 (AOE、抽牌) -> 只要拖到上半区就打出
         if (!card.needsTarget)
         {
             //把卡牌当前的世界坐标(比如 Y = 3.5) 转成屏幕像素坐标(比如 Y = 800)
-            if (Mouse.current.position.ReadValue().y > Screen.height * triggerLine)
+            if (mousePos.y > Screen.height * triggerLine)
             {
                 TryPlayCard(null);
             }
@@ -156,7 +196,7 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
         //  新写法 (使用新系统):
         // Mouse.current.position.ReadValue() 等同于旧的 Input.mousePosition
         var screenPosition = Mouse.current.position.ReadValue();
-        Vector2 worldPos = Camera.main.ScreenToWorldPoint(screenPosition);
+        Vector2 worldPos = _mainCamera.ScreenToWorldPoint(screenPosition);
 
         // 射线检测逻辑
         var hit = Physics2D.Raycast(worldPos, Vector2.zero);
@@ -170,9 +210,19 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     private void TryPlayCard(CharacterBase target)
     {
         var card = _cardDisplay.runtimeItem;
-        if (GameManager.Instance.PlayCard(card, target)) {
-            // 有钱！执行！
-            Destroy(gameObject); // 销毁卡牌
+        if (GameManager.Instance.PlayCard(card, target))
+        {
+            // 🎯 无限手牌逻辑
+            if (card.data != null && card.data.returnToHand)
+            {
+                // 打出成功，但不销毁，而是飞回手牌
+                ReturnToHand();
+            }
+            else
+            {
+                // 正常打出，销毁 UI 对象
+                CardPoolManager.Instance.RecycleCard(_cardDisplay);
+            }
         } else {
             // 没钱，回家
             ReturnToHand();
@@ -181,8 +231,19 @@ public class CardDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     
     private void ReturnToHand()
     {
-        // 没打出去，回家
+        // 回到手牌区
         transform.SetParent(_originalParent);
         transform.SetSiblingIndex(_originalIndex); // 回到原来的排序位置
+        
+        // 🎯 重置位置和旋转（让 LayoutGroup 重新控制位置）
+        transform.localPosition = Vector3.zero;
+        transform.localRotation = Quaternion.identity;
+        transform.localScale = Vector3.one;
+        
+        // 🎯 强制刷新布局
+        if (_originalParent != null)
+        {
+            UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(_originalParent as RectTransform);
+        }
     }
 }

@@ -23,20 +23,20 @@ public class CardDisplay : MonoBehaviour
 
     // --- 1. 初始化绑定 (核心修改) ---
     public void Bind(RuntimeItem item)
-    {
+    {   
+        gameObject.SetActive(true);
         // A. 安全解绑旧的 (防止对象池复用时出错)
         UnsubscribeEvents();
 
         runtimeItem = item;
-        
         // B. 搬运静态数据
-        var data = item.Data;
+        var data = item.data;
         nameText.text = data.cardName;
         descriptionText.text = data.description;
         artworkImage.sprite = data.artwork;
         
         // 简单处理攻防显示
-        if (data.cardType == CardType.Minion)
+        /*if (data.cardType == CardType.Minion)
         {
             attackText.text = data.attack.ToString();
             healthText.text = data.health.ToString();
@@ -47,13 +47,13 @@ public class CardDisplay : MonoBehaviour
         {
             attackText.gameObject.SetActive(false);
             healthText.gameObject.SetActive(false);
-        }
+        }*/
 
         // C. 订阅新主人的事件
         // 只有当主人身上挂了 CharacterStateManager 时才订阅
-        if (runtimeItem.Owner != null)
+        if (runtimeItem.owner != null)
         {
-            _boundManager = runtimeItem.Owner.GetComponent<CharacterStateManager>();
+            _boundManager = runtimeItem.owner.stateManager;
             if (_boundManager != null)
             {
                 // ✨ 监听：只要主人的 Buff 变了，我就刷新描述和费用
@@ -66,17 +66,24 @@ public class CardDisplay : MonoBehaviour
         {
             GameManager.Instance.OnManaChanged += HandleManaChanged;
         }
+        
+        // 🎯 E. 监听卡牌修改事件 (升级、添加词缀等)
+        if (DeckManager.Instance != null)
+        {
+            DeckManager.Instance.OnCardModified += HandleCardModified;
+        }
     
         // 第一次手动刷新
         UpdateDescription();
         UpdateCostUI();
     }
-
-    private void OnDestroy()
+    
+// ✨ 清理方法：还回池子时重置
+    public void ResetCard()
     {
-        UnsubscribeEvents();
+        runtimeItem = null;
+        gameObject.SetActive(false);
     }
-
     // 辅助：统一解绑逻辑
     private void UnsubscribeEvents()
     {
@@ -91,6 +98,12 @@ public class CardDisplay : MonoBehaviour
         if (GameManager.Instance != null)
         {
             GameManager.Instance.OnManaChanged -= HandleManaChanged;
+        }
+        
+        // 🎯 解绑卡牌修改事件
+        if (DeckManager.Instance != null)
+        {
+            DeckManager.Instance.OnCardModified -= HandleCardModified;
         }
     }
 
@@ -107,6 +120,17 @@ public class CardDisplay : MonoBehaviour
         // 法力值变了，只刷新费用颜色
         UpdateCostUI(); 
     }
+    
+    // 🎯 卡牌被修改时 (升级、添加词缀等)
+    private void HandleCardModified(RuntimeItem modifiedItem)
+    {
+        // 只刷新自己绑定的卡牌
+        if (modifiedItem == runtimeItem)
+        {
+            UpdateDescription();
+            UpdateCostUI();
+        }
+    }
 
     // --- 3. 费用刷新逻辑 (调用新接口) ---
     private void UpdateCostUI()
@@ -121,11 +145,11 @@ public class CardDisplay : MonoBehaviour
         costText.text = currentCost.ToString();
 
         // 变色逻辑
-        if (currentCost < runtimeItem.Data.manaCost)
+        if (currentCost < runtimeItem.data.manaCost)
         {
             costText.color = Color.green; // 便宜了
         }
-        else if (currentCost > runtimeItem.Data.manaCost)
+        else if (currentCost > runtimeItem.data.manaCost)
         {
             costText.color = Color.red;   // 贵了
         }
@@ -135,40 +159,81 @@ public class CardDisplay : MonoBehaviour
         }
     }
 
-    // --- 4. 描述刷新逻辑 (微调参数) ---
+    // --- 4. 描述刷新逻辑 ---
+    // --- 4. 描述刷新逻辑 ---
     private void UpdateDescription()
     {
         if (runtimeItem == null) return;
         
-        var cardData = runtimeItem.Data;
-        var caster = runtimeItem.Owner;
-        var dynamicValues = new List<string>();
+        var cardData = runtimeItem.data;
+        var dynamicValues = new List<object>();
 
-        // 连接所有效果列表
-        var allEffects = Enumerable.Empty<CardEffect>()
-            .Concat(cardData.onPlayEffects ?? Enumerable.Empty<CardEffect>())
-            .Concat(cardData.onTurnStartEffects ?? Enumerable.Empty<CardEffect>())
-            .Concat(cardData.onTurnEndEffects ?? Enumerable.Empty<CardEffect>());
-        
-        foreach (var effect in allEffects)
+        // ✨ 遍历效果，按顺序收集快照的值
+        void ProcessEffectList(System.Collections.Generic.List<CardEffect> effects, string listPrefix)
         {
-            // ✨ 这里传入 caster (RuntimeCard.Owner)
-            // 确保 ShieldSlamEffect 能拿到正确的护甲值
-            if (effect.GetDescriptionValue(runtimeItem, out var baseVal, out var finalVal))
+            if (effects == null) return;
+            
+            for (int i = 0; i < effects.Count; i++)
             {
-                dynamicValues.Add(FormatValue(baseVal, finalVal));
+                var effect = effects[i];
+                if (effect == null) continue;
+                
+                string key = $"{listPrefix}_{effect.GetType().Name}_{i}";
+                
+                // 尝试获取原始快照 (可能为 null)
+                runtimeItem.initialSnapshots.TryGetValue(key, out var rawSnapshot);
+                
+                // ✨ 核心：让 Effect 返回可能被修改后的快照
+                var modifiedSnapshot = effect.GetDescriptionSnapshot(runtimeItem, rawSnapshot);
+                
+                // ✨ 统一使用 Converter 提取值
+                var args = Converter(modifiedSnapshot);
+                dynamicValues.AddRange(args);
             }
         }
+        
+        ProcessEffectList(cardData.onPlayEffects, "OnPlay");
+        ProcessEffectList(cardData.onTurnStartEffects, "OnTurnStart");
+        ProcessEffectList(cardData.onTurnEndEffects, "OnTurnEnd");
 
         try
         {
-            descriptionText.text = string.Format(cardData.description, dynamicValues.ToArray());
+            string formattedDesc = string.Format(cardData.description, dynamicValues.ToArray());
+            // ✨ 关键词高亮处理
+            descriptionText.text = KeywordLibrary.Parse(formattedDesc);
         }
         catch 
         {
-            // 防止策划配表配错了 (比如写了 {0} 但没有效果提供数值)
-            descriptionText.text = cardData.description;
+            // ✨ 即使格式化失败，也尝试处理关键词
+            descriptionText.text = KeywordLibrary.Parse(cardData.description);
         }
+    }
+    
+    /// <summary>
+    /// 统一转换快照为显示参数
+    /// 约定: {0} = stacks, {1} = BaseValue, {2} = FinalValue (如果有)
+    /// </summary>
+    private object[] Converter(EffectSnapshot snap)
+    {
+        if (snap == null) return new object[] { 0, 0 };
+        
+        var args = new List<object>();
+        
+        // {0} = 层数/次数
+        args.Add(snap.stacks);
+        
+        // {1} = BaseValue (原始)
+        int baseVal = snap.GetInt("BaseValue", 0);
+        args.Add(baseVal);
+        
+        // {2} = FinalValue (如果存在，这是子类计算后写入的)
+        // 如果没有 FinalValue，用 BaseValue
+        int finalVal = snap.GetInt("FinalValue", baseVal);
+        
+        // 带变色的最终值
+        args.Add(FormatValue(baseVal, finalVal));
+        
+        return args.ToArray();
     }
 
     // 辅助：数值变色

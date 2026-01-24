@@ -9,9 +9,12 @@ public class EffectContext
     public CharacterBase mainTarget;   // 玩家鼠标选的目标 (如果有)
     public RuntimeItem sourceRuntimeItem;
     
-    public CardDefinition SourceCard => sourceRuntimeItem?.Data;
+    public CardDefinition SourceCard => sourceRuntimeItem?.data;
     
-    public int repeatCount = 0;
+    public float repeatCount = 0;
+    
+    // ✨ 精确查找：当前正在执行的效果对应的快照 Key
+    public string snapshotKey;
     
     // ✨ 新增：用于传递这一波操作中被消耗的 Buff (给 UI 动画用)
     public List<StatusEffect> consumedBuffs = new List<StatusEffect>();

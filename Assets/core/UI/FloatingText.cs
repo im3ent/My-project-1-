@@ -13,7 +13,7 @@ public class FloatingText : MonoBehaviour
     }
 
     // 初始化方法
-    public void Setup(int damageAmount)
+    public void Setup(int damageAmount, System.Action onComplete = null)
     {
         textMesh.text = damageAmount.ToString();
         textMesh.color = Color.red; // 初始颜色 (也可以根据伤害类型变色，比如暴击是黄色)
@@ -30,7 +30,14 @@ public class FloatingText : MonoBehaviour
 
         // 3. 逐渐变透明 (Fade Out)
         textMesh.DOFade(0, 0.8f).SetEase(Ease.InQuad).OnComplete(() => {
-            Destroy(gameObject); // 动画播完，自杀
+            if (onComplete != null)
+            {
+                onComplete.Invoke();
+            }
+            else
+            {
+                Destroy(gameObject); // 动画播完，自杀
+            }
         });
         
         // 4. (可选) 刚出来时有个弹跳缩放

@@ -9,10 +9,13 @@ using UnityEngine.UI;
 public class ShopManager : MonoBehaviour
 {
     public static ShopManager Instance;
-    public Image globalDragGhost; // 这是一个放在 Canvas 顶层、默认隐藏的物体
+    //public Image globalDragGhost; // 这是一个放在 Canvas 顶层、默认隐藏的物体
+    
     [Header("配置")]
- 
     public GameObject shopItemPrefab; // 商品图标预制体
+    
+    // 💡 Player 改为通过 RunManager 动态获取，支持跨场景
+    private CharacterBase GetPlayer() => RunManager.Instance?.GetCurrentPlayer();
     
     [Header("UI 引用")]
     // ✨ 关键：直接拖入场景里的 3 个或 4 个空物体（作为货架）
@@ -31,13 +34,25 @@ public class ShopManager : MonoBehaviour
     public TextMeshProUGUI rerollCostText;
     // 当前的卡池
     [SerializeField] private List<CardDefinition> currentPool = new();
-    private void Awake() { Instance = this; }
+    private void Awake()
+    {
+        // 单例模式 + 防重复保护（场景本地，不需要 DontDestroyOnLoad）
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+    }
 
     private void Start()
     {
         currentFreeRerolls = maxFreeRerolls;
         InitializePool();
         OnRerollButtonClicked(); // 开局先自动刷一次
+        
+        // 💡 拖拽虚影改用 GlobalDragGhostManager.Instance（在 PersistentUI 中）
+        // 不再需要 globalDragGhost 字段，直接调用 GlobalDragGhostManager.Instance.ShowGhost() 即可
     }
 
     // --- 1. 初始化卡池 ---
@@ -146,7 +161,8 @@ public class ShopManager : MonoBehaviour
     }
     public RuntimeItem CreateCardWithRandomAffix(CardDefinition def)
     {
-        var newItem = new RuntimeItem(def, null);
+        // 从 GameManager 获取 player（全局持久化）
+        var newItem = new RuntimeItem(def, GetPlayer());
 
         // 假设你有 30% 几率获得一个随机词条
         if (Random.value < 0.5f)

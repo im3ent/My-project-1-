@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e74c52489c277147923e892758314bc, type: 3}
+  m_Name: ReduceCostBuff
+  m_EditorClassIdentifier: Assembly-CSharp::ReduceCostBuff
+  id: ReduceCostEffect
+  displayName: 
+  icon: {fileID: 0}
+  isStackable: 1
+  removeAtTurnEnd: 1
+  costReduce: 1
+  stack: 2

@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad1d259b23abbfe43bc5cc51c6a73cd3, type: 3}
+  m_Name: SpawnImp_Effect
+  m_EditorClassIdentifier: Assembly-CSharp::SpawnUnitEffect
+  effectName: 
+  animateDuration: 1
+  unitPrefab: {fileID: 8320156889260797395, guid: b969660f2b393a04ead1522404cc5b13, type: 3}
+  associatedCardData: {fileID: 11400000, guid: d7f2b0ff70405fe48bef631bf3f6284e, type: 2}
+  isEnemy: 1
+  spawnOffset: {x: 2, y: 0, z: 0}

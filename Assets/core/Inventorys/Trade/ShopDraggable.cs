@@ -1,82 +1,120 @@
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class ShopDraggable :  Draggable
+public class ShopDraggable : Draggable
 {
     public ShopItem shopItem;
-    private Image ghostImage; // 拖拽时的临时图标
-    private RectTransform ghostRect;
     private CardDefinition data;
     private CanvasGroup cg;
-    private void Awake()
+    
+    // 🎯 商店特有：记录原物品屏幕位置用于虚影显示
+    private Vector2 originalItemScreenPos;
+    
+    protected override void Awake()
     {
+        base.Awake();
         cg = GetComponent<CanvasGroup>();
         shopItem = GetComponent<ShopItem>();
-        ghostImage = ShopManager.Instance.globalDragGhost;
-        ghostRect = ghostImage.GetComponent<RectTransform>();
+    }
+    
+    /// <summary>
+    /// 🎯 在点击瞬间记录位置（继承基类并添加商店特有逻辑）
+    /// </summary>
+    public override void OnPointerDown(PointerEventData eventData)
+    {
+        base.OnPointerDown(eventData); // 调用基类记录 touchOffset
+        
+        if (shopItem.itemToSell == null) return;
+        
+        // 🎯 商店特有：记录 iconImage 的屏幕位置
+        RectTransform iconRect = shopItem.iconImage.rectTransform;
+        Vector3[] corners = new Vector3[4];
+        iconRect.GetWorldCorners(corners);
+        Vector3 visualCenter = (corners[0] + corners[2]) / 2f;
+        
+        originalItemScreenPos = RectTransformUtility.WorldToScreenPoint(
+            eventData.pressEventCamera,
+            visualCenter
+        );
     }
 
     public override void OnBeginDrag(PointerEventData eventData)
     {
         data = shopItem.itemToSell;
-        if (data == null && ghostRect == null) return;
+        if (data == null) return;
         
-        // 1. 检查钱够不够（不够连拖都不让拖）
+        if (GlobalDragGhostManager.Instance == null)
+        {
+            Debug.LogError("[ShopDraggable] GlobalDragGhostManager.Instance is null!");
+            return;
+        }
+        
+        // 检查钱够不够
         if (MoneyManager.Instance.currentGold < data.price)
         {
             Debug.Log("钱不够，拖不动！");
+            hasRecordedDownPosition = false;
             return;
         }
-        // 假设格子大小是 100，你可以从 InventoryManager 获取
-        const float s = 100f;
-        // 2. 生成一个临时的图标跟随鼠标
-        ghostRect.sizeDelta = new Vector2(data.width * s, data.height * s);
-        ghostRect.position = shopItem.iconImage.transform.position;
-        ghostImage.sprite = shopItem.iconImage.sprite;
-        ghostImage.gameObject.SetActive(true);
-  
-        cg.alpha = 0;             // 透明度设为 0 (看不见)
-
-        // ✨✨✨ 1. 计算触点偏移 ✨✨✨
-        // 算出鼠标当前位置，减去物品当前位置，得到偏移向量
-        // 如果是 Screen Space Overlay，可以直接减
-        // 如果是 Camera 模式，需要用 RectTransformUtility.ScreenPointToLocalPointInRectangle
         
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            ghostRect.parent as RectTransform, // 基于父物体坐标系
-            eventData.position, 
-            eventData.pressEventCamera, 
-            out var localMousePos
+        // 使用 GlobalDragGhostManager 显示虚影
+        const float s = 100f;
+        Vector2 ghostSize = new Vector2(data.width * s, data.height * s);
+        
+        // 🎯 使用 OnPointerDown 中记录的位置（避免 drag threshold 偏差）
+        Vector2 mousePos = hasRecordedDownPosition ? pointerDownPosition : eventData.position;
+        
+        GlobalDragGhostManager.Instance.ShowGhostWithOffset(
+            shopItem.iconImage.sprite, 
+            ghostSize, 
+            mousePos,
+            originalItemScreenPos
         );
-        // 记录：鼠标点在哪里？(相对于物品原本的 anchors position)
-        touchOffset = localMousePos - ghostRect.anchoredPosition;
-
+        GlobalDragGhostManager.Instance.SetGhostAlpha(0.7f);
+        
+        hasRecordedDownPosition = false;
+        cg.alpha = 0;
     }
 
     public override void OnDrag(PointerEventData eventData)
     {
-        //if (ghostRect != null) return;
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            ghostRect.parent as RectTransform, // 基于父物体坐标系
-            eventData.position, 
-            eventData.pressEventCamera, 
-            out var localMousePos
-        );
-        ghostRect.anchoredPosition = localMousePos- touchOffset;
+        if (GlobalDragGhostManager.Instance == null) return;
+        if (!GlobalDragGhostManager.Instance.dragGhostImage.gameObject.activeSelf) return;
         
-        var bestIndex = GetCurrentGridIndex(ghostRect, data.width, data.height);
+        // 🎯 使用 GlobalDragGhostManager 更新位置（自动处理坐标转换）
+        GlobalDragGhostManager.Instance.UpdateGhostPosition(eventData.position);
+        
+        // 🎯 使用 UICamera 进行 Raycast 检测背包格子
+        var uiCamera = GlobalDragGhostManager.Instance.UICamera;
+        
+        // 更新背包虚影显示
+        var bestIndex = GetCurrentGridIndex(
+            GlobalDragGhostManager.Instance.dragGhostImage.rectTransform, 
+            data.width, 
+            data.height,
+            uiCamera
+        );
         InventoryManager.Instance.UpdateShadow(bestIndex, data.width, data.height, data.artwork, data.shapeOffsets);
     }
 
     public override void OnEndDrag(PointerEventData eventData)
     {
-        if (!ghostImage.gameObject.activeSelf) return;
+        if (GlobalDragGhostManager.Instance == null) return;
+        if (!GlobalDragGhostManager.Instance.dragGhostImage.gameObject.activeSelf) return;
         
-        var bestIndex = GetCurrentGridIndex(ghostRect, data.width, data.height);
+        // 🎯 使用 UICamera 进行 Raycast 检测背包格子
+        var uiCamera = GlobalDragGhostManager.Instance.UICamera;
         
-        ghostImage.gameObject.SetActive(false);
+        var bestIndex = GetCurrentGridIndex(
+            GlobalDragGhostManager.Instance.dragGhostImage.rectTransform, 
+            data.width, 
+            data.height,
+            uiCamera
+        );
+        
+        // 隐藏虚影
+        GlobalDragGhostManager.Instance.HideGhost();
         InventoryManager.Instance.HideShadow();
 
         if (bestIndex != -1)
@@ -84,6 +122,7 @@ public class ShopDraggable :  Draggable
             TryBuyAndPlace(bestIndex);
         }
         
+        // 恢复原物品显示
         cg.alpha = 1;    
     }
 
@@ -93,12 +132,6 @@ public class ShopDraggable :  Draggable
 
         // 双重检查：钱够不够
         if (MoneyManager.Instance.currentGold < price) return;
-        // 尝试直接放置到指定格子
-        // 注意：我们需要 InventoryManager 提供一个 "TryPlaceAt" 方法
-        // 或者我们可以偷懒，直接调用 AddItem，但那样不能指定位置
-            
-        // 为了实现"拖到哪放哪"，我们需要手动构建 RuntimeCard
-       
             
         // 检查该位置能否放下
         if (InventoryManager.Instance.CanPlaceItem(targetIndex, data.width, data.height, data.shapeOffsets))
@@ -116,5 +149,4 @@ public class ShopDraggable :  Draggable
             Debug.Log("这里放不下！");
         }
     }
-
 }

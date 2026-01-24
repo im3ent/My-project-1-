@@ -19,6 +19,32 @@ public class PassiveDatabase : ScriptableObject
         return allPassives[Random.Range(0, allPassives.Count)];
     }
 
+    // 运行时缓存 (name -> PassiveEffect)
+    private Dictionary<string, PassiveEffect> _cache;
+
+    /// <summary>
+    /// 通过名称查找被动
+    /// </summary>
+    public PassiveEffect GetByName(string passiveName)
+    {
+        if (string.IsNullOrEmpty(passiveName)) return null;
+
+        // 懒加载缓存
+        if (_cache == null)
+        {
+            _cache = new Dictionary<string, PassiveEffect>();
+            foreach (var p in allPassives)
+            {
+                if (p != null && !string.IsNullOrEmpty(p.name))
+                {
+                    _cache[p.name] = p;
+                }
+            }
+        }
+
+        return _cache.TryGetValue(passiveName, out var passive) ? passive : null;
+    }
+
     // --- 👑 编辑器自动化工具 (核心部分) ---
 #if UNITY_EDITOR
     [ContextMenu("自动扫描并填充所有被动")]

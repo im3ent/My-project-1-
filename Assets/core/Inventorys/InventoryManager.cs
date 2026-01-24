@@ -9,28 +9,40 @@ public class InventoryManager : MonoBehaviour
     public static InventoryManager Instance;
     
     [Header("核心设置")]
-    public int totalSlots = 20;
-    public int columns = 5; // 必须与 Grid Layout Group 一致
-    public  int rows = 4;
+    public int totalSlots = 144; // 12x12 的大网格，足够容纳扩展
+    public int columns = 12; 
+    public  int rows = 12;
     [Header("UI 引用")]
     public Transform gridParent;    // 放格子的父物体 (Grid)
     public Transform itemContainer; // 放物品的父物体 (Container)
     public GameObject slotPrefab;   // 格子预制体
     public GameObject itemPrefab;   // 物品预制体
 
-    public CharacterBase player;
-
+    // 💡 Player 改为通过 RunManager 动态获取，支持跨场景
+    private CharacterBase GetPlayer() => RunManager.Instance?.GetCurrentPlayer();
+    private CharacterBase player; // 在 Run 开始后初始化
+    private bool isPlayerInitialized = false; // 标记 player 是否已初始化
+    
     [Header("虚影设置")]
     public Image shadowImage; 
     // 拖拽一下你的 GridContainer 里随便一个 Slot 的 Image 赋值给它，或者由代码生成
     public Color validColor = new Color(0, 1, 0, 0.5f); // 绿色半透明 (能放)
     public Color invalidColor = new Color(1, 0, 0, 0.5f); // 红色半透明 (不能放)
     
+    [Header("背包扩容设置")]
+    // public int initialUnlockedSlots = 15; // (废弃) 改用中心区域逻辑
+    public int initialCenterWidth = 4;
+    public int initialCenterHeight = 4;
+    
+    public Color slotUnlockedColor = new Color(1, 1, 1, 0.3f); // 正常白底半透明
+    public Color slotLockedColor = new Color(0.3f, 0.3f, 0.3f, 0.5f); // 锁住是灰色
+
     // 运行时数据
     private InventoryItem[] gridStates;
+    private List<InventorySlot> slotScripts = new(); // 缓存 Slot 脚本以便快速访问
     // 注意：这里改成 public 方便 Draggable 访问，或者写个只读属性
-    public List<RectTransform> slotRects = new (); 
-    
+    public List<RectTransform> slotRects = new ();
+    public RectTransform rectTransform;
     private HashSet<InventoryItem> allInventoryItems = new();
     public List<InventoryItem> cachedI2IPassives = new();
     // 缓存参数
@@ -39,19 +51,46 @@ public class InventoryManager : MonoBehaviour
 
     private void Awake()
     {
+        // 单例保护（在 PersistentUI 中，通过 Additive 保留）
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
         Instance = this;
         gridStates = new InventoryItem[totalSlots];
+        
+        // 🎯 订阅 Run 开始事件
+        RunManager.OnRunStarted += OnRunStarted;
+    }
+    
+    private void OnDestroy()
+    {
+        // 取消订阅
+        RunManager.OnRunStarted -= OnRunStarted;
+    }
+    
+    /// <summary>
+    /// Run 开始后的初始化（此时 player 已存在）
+    /// </summary>
+    private void OnRunStarted()
+    {
+        player = GetPlayer();
+        isPlayerInitialized = true;
+        Debug.Log($"[InventoryManager] OnRunStarted: player = {(player != null ? player.name : "null")}");
     }
 
     private void Start()
     {
+        // 💡 UI 结构初始化（不依赖 player）
         InitSystem();
     }
 
     // --- 核心初始化系统 ---
     private void InitSystem()
     {
-
+        // 💡 不再在这里缓存 player，改为在需要时动态调用 GetPlayer()
+        
         // 1. 自动修正层级：确保 ItemContainer 在 GridContainer 下面 (渲染在最上)
         if (gridParent != null && itemContainer != null)
         {
@@ -73,13 +112,17 @@ public class InventoryManager : MonoBehaviour
 
         // 4. 缓存坐标和参数
         CacheSlotData();
+        
+        // ✨ 5. 强制标记 Dirty，确保第一帧就计算迷雾显隐 (否则初始会全部显示)
+        SetDirty();
     }
 
     void GenerateSlots()
     {
         // 清理旧格子
-        foreach (Transform child in gridParent) DestroyImmediate(child.gameObject);
+        foreach (Transform child in gridParent) Destroy(child.gameObject);
         slotRects.Clear();
+        slotScripts.Clear();
 
         for (int i = 0; i < totalSlots; i++)
         {
@@ -90,6 +133,12 @@ public class InventoryManager : MonoBehaviour
             // ✨ 关键：初始化 Slot 的索引
             slot.slotIndex = i;
             
+            // 初始锁定状态：根据中心规则判断
+            slot.isLocked = !IsInInitialCenter(i);
+            slot.UpdateVisual(slotUnlockedColor, slotLockedColor);
+
+            slotScripts.Add(slot);
+
             // ✨ 强制修正 Slot 的 Pivot 为中心点，防止坐标计算偏移
             var rect = slotObj.GetComponent<RectTransform>();
             rect.pivot = new Vector2(0.5f, 0.5f);
@@ -156,6 +205,7 @@ public class InventoryManager : MonoBehaviour
             itemRect.localScale = Vector3.one;
             itemRect.localRotation = Quaternion.identity;
 
+            itemRect.pivot = new Vector2(0.5f, 0.5f);
             // ✨【关键】坐标转换：将格子的世界坐标转为 Container 的局部坐标
             // 这解决了 Scale 不同、父物体不同导致的所有偏移问题
             Vector3 targetLocalPos = itemContainer.InverseTransformPoint(slotRect.position);
@@ -216,28 +266,34 @@ public class InventoryManager : MonoBehaviour
             int idx = GetIndex(targetX, targetY);
             if (idx < 0 || idx >= totalSlots) return false;
 
-            // 3. 占用检查 (是否撞到了别的物品)
+            // ✨ 3. 锁住检查 (如果格子还没解锁，不能放)
+            // 注意：slotScripts 列表必须和 slotRects 同步
+            if (idx < slotScripts.Count && slotScripts[idx].isLocked) return false;
+
+            // 4. 占用检查 (是否撞到了别的物品)
             if (gridStates[idx] != null) return false;
         }
         return true;
     }
 
     // --- 辅助功能 ---
-    public List<Vector2Int> GetEffectiveShape(int w, int h, List<Vector2Int> customShape)
+    public IEnumerable<Vector2Int> GetEffectiveShape(int w, int h, List<Vector2Int> customShape)
     {
         // 如果有自定义形状，直接返回
-        if (customShape != null && customShape.Count > 0) return customShape;
+        if (customShape != null && customShape.Count > 0)
+        {
+            foreach (var p in customShape) yield return p;
+            yield break;
+        }
 
-        // 否则生成标准的矩形点阵
-        List<Vector2Int> standardShape = new List<Vector2Int>();
+        // 否则生成标准的矩形点阵 (使用 yield return 避免 new List)
         for (int x = 0; x < w; x++)
         {
             for (int y = 0; y < h; y++)
             {
-                standardShape.Add(new Vector2Int(x, y));
+                yield return new Vector2Int(x, y);
             }
         }
-        return standardShape;
     }
     // 清理网格占用
     public void ClearGrid(int startIndex, int w, int h, InventoryItem itemToClear)
@@ -245,9 +301,9 @@ public class InventoryManager : MonoBehaviour
         if (startIndex < 0) return;
         // 获取形状
         List<Vector2Int> shape = null;
-        if (itemToClear.runtimeItem.Data != null) shape = itemToClear.runtimeItem.Data.shapeOffsets;
+        if (itemToClear.runtimeItem.data != null) shape = itemToClear.runtimeItem.data.shapeOffsets;
     
-        List<Vector2Int> pointsToClear = GetEffectiveShape(w, h, shape);
+        IEnumerable<Vector2Int> pointsToClear = GetEffectiveShape(w, h, shape);
         Vector2Int startCoord = GetCoord(startIndex);
 
         foreach (Vector2Int point in pointsToClear)
@@ -258,22 +314,23 @@ public class InventoryManager : MonoBehaviour
                 gridStates[idx] = null;
             }
         }
+        SetDirty(); // ✨ 关键：清理格子（拿起或删除物品）后必须标记为 Dirty 以刷新光环
     }
 
     // Button添加物品
     public bool AddItem(RuntimeItem item)
     {
 
-        var w = (item.Data != null) ? item.Data.width : 1;
-        var h = (item.Data != null) ? item.Data.height : 1;
+        var w = (item.data != null) ? item.data.width : 1;
+        var h = (item.data != null) ? item.data.height : 1;
 
         // 寻找第一个能放下的位置
         for (var i = 0; i < totalSlots; i++)
         {
-            if (!CanPlaceItem(i, w, h,item.Data.shapeOffsets)) continue;
+            if (!CanPlaceItem(i, w, h,item.data.shapeOffsets)) continue;
             var obj = Instantiate(itemPrefab, itemContainer);
             var img = obj.GetComponent<Image>();
-            img.sprite = item.Data.artwork;
+            img.sprite = item.data.artwork;
             img.alphaHitTestMinimumThreshold = 0.1f;
             var script = obj.GetComponent<InventoryItem>();
             script.Initialize(item);
@@ -283,7 +340,7 @@ public class InventoryManager : MonoBehaviour
             //启用CheckNeighbor检查item四周
             return true;
         }
-        Debug.Log("背包已满，无法添加物品");
+        // Debug.Log("背包已满，无法添加物品");
         return false;
     }
     //鼠标拖拽添加
@@ -291,7 +348,7 @@ public class InventoryManager : MonoBehaviour
     {
         var obj = Instantiate(itemPrefab, itemContainer);
         var img = obj.GetComponent<Image>();
-        img.sprite = item.Data.artwork;
+        img.sprite = item.data.artwork;
         img.alphaHitTestMinimumThreshold = 0.1f;
         var script = obj.GetComponent<InventoryItem>();
         script.Initialize(item);
@@ -398,7 +455,7 @@ public class InventoryManager : MonoBehaviour
    
 }
 
-    // ✨ 辅助方法：检查是否出界
+    // ✨ 辅助方法：检查是否出界或覆盖锁定/隐藏格子
     private bool IsOutOfBounds(int targetIndex, int width, int height)
 {
     Vector2Int pos = GetCoord(targetIndex);
@@ -407,15 +464,26 @@ public class InventoryManager : MonoBehaviour
     if (pos.x + width > columns) return true;
 
     // B. 检查下边界 (检查物品右下角那个格子是否存在)
-    // 计算右下角的坐标
     int endX = pos.x + width - 1;
     int endY = pos.y + height - 1;
-    
-    // 算出右下角的索引
     int cornerIndex = GetIndex(endX, endY);
-
-    // 如果右下角索引超过了总格子数，说明下面出界了
     if (cornerIndex >= totalSlots) return true;
+
+    // C. 🎯 检查是否覆盖锁定或隐藏的格子
+    for (int x = 0; x < width; x++)
+    {
+        for (int y = 0; y < height; y++)
+        {
+            int idx = GetIndex(pos.x + x, pos.y + y);
+            if (idx < 0 || idx >= slotRects.Count) continue;
+            
+            var slotObj = slotRects[idx].GetComponent<InventorySlot>();
+            if (slotObj != null && (!slotObj.isVisible || slotObj.isLocked))
+            {
+                return true; // 如果任何格子被锁定或隐藏，视为出界
+            }
+        }
+    }
 
     return false;
 }
@@ -515,14 +583,195 @@ public class InventoryManager : MonoBehaviour
     {
         if (inventoryDirty)
         {
+            // 1. 先根据当前物品位置，计算所有格子的解锁状态
+            RefreshSlotLocks();
+            // 2. 状态变了，再算光环
             RefreshInventoryPassives();
             inventoryDirty = false;
         }
     }
 
-
-    private void RefreshInventoryPassives()
+    // ✨ 辅助：判断一个索引是否在初始中心区域内
+    private bool IsInInitialCenter(int index)
     {
+        Vector2Int pos = GetCoord(index);
+        
+        // 计算中心起始点 (使得 4x4 在 12x12 的正中间)
+        int startX = (columns - initialCenterWidth) / 2;
+        int startY = (rows - initialCenterHeight) / 2;
+        
+        return pos.x >= startX && pos.x < startX + initialCenterWidth &&
+               pos.y >= startY && pos.y < startY + initialCenterHeight;
+    }
+
+    private void RefreshSlotLocks()
+    {
+        // A. 重置所有格子为“默认锁定规则”
+        for (int i = 0; i < slotScripts.Count; i++)
+        {
+            // 默认：如果在中心区域内，则是解锁的；否则是锁定的
+            // 注意 isLocked = !IsInInitialCenter
+            slotScripts[i].isLocked = !IsInInitialCenter(i);
+        }
+        
+        // B. 遍历所有物品，寻找“解锁器”
+        // 注意：这里我们只关心 gridStates 里实际存在的物品
+        // 为了去重，可以用 HashSet
+        var items = new HashSet<InventoryItem>();
+        for(int i=0; i<gridStates.Length; i++)
+        {
+            if (gridStates[i] != null) items.Add(gridStates[i]);
+        }
+
+        foreach (var item in items)
+        {
+            // 检查物品是否有 UnlockSlotEffect
+            // 这需要遍历它的 Passives
+            if (item.runtimeItem == null) continue;
+            
+            // 获取所有生效的被动 (Source Passives)
+            // 获取所有生效的被动 (Source Passives)
+            foreach (var ctx in item.runtimeItem.GetSourcePassives())
+            {
+                // ✨ 条件检查：如果不满足条件，直接跳过 (不解锁格子)
+                if (!ctx.effect.IsConditionMet(item.runtimeItem)) continue;
+
+                // ✨ 逻辑分流 (多态重构后)：
+                // 不再需要判断 if (ctx.effect is UnlockSlotEffect)
+                // 直接问 Effect：你要解锁哪些格子？
+                var indicesToUnlock = ctx.effect.GetUnlockedSlotIndices(item);
+                
+                // 将其合并到 unlockedIndices（或者直接操作）
+                // 这里为了简单，我们还是直接操作
+                foreach (var idx in indicesToUnlock)
+                {
+                    if (idx >= 0 && idx < slotScripts.Count)
+                    {
+                        slotScripts[idx].isLocked = false;
+                    }
+                }
+            }
+        }
+
+        // C. 计算可见性
+        // 用户需求变更：未解锁的格子直接隐藏 (不显示灰底)
+        // 这样背包看起来就是随解锁动态扩大的
+        for (int i = 0; i < slotScripts.Count; i++)
+        {
+            // 简单粗暴规则：解锁即见，锁住即隐
+            slotScripts[i].isVisible = !slotScripts[i].isLocked;
+            
+            // 如果你未来想要“待解锁”的边缘显示出来 (比如仅显示 unlocked 旁边一圈)
+            // 可以重新把 GetNeighborIndices 拿回来用
+            // 但目前需求是“隐藏起来”
+        }
+
+        // D. 刷新 UI 颜色
+        foreach (var slot in slotScripts)
+        {
+            slot.UpdateVisual(slotUnlockedColor, slotLockedColor);
+        }
+    }
+
+    // ✨ 检查物品是否被“钉死”（因为它的解锁导致了其他物品的存在）
+    public bool IsItemPinned(InventoryItem item)
+    {
+        if (item == null || item.runtimeItem == null) return false;
+
+        // 1. 找到该物品产生的所有解锁格子
+        var unlockedIndices = new HashSet<int>();
+        foreach (var ctx in item.runtimeItem.GetSourcePassives())
+        {
+            // ✨ 条件检查
+            if (!ctx.effect.IsConditionMet(item.runtimeItem)) continue;
+
+            // ✨ 逻辑分流 (多态重构后)
+            var indices = ctx.effect.GetUnlockedSlotIndices(item);
+            unlockedIndices.UnionWith(indices);
+        }
+
+        // 2. 如果它本身没有任何解锁功能，自然不会被钉死
+        if (unlockedIndices.Count == 0) return false;
+
+        // 3. 检查这些格子里是否有“别人”
+        foreach (var idx in unlockedIndices)
+        {
+            // 安全检查
+            if (idx < 0 || idx >= gridStates.Length) continue;
+
+            // ✨ 关键修复：如果这个格子本来就在“初始中心区”(天生解锁)，
+            // 那么它并不依赖当前物品来解锁，所以里面的物品不应该限制当前物品的移动
+            if (IsInInitialCenter(idx)) continue;
+
+            var otherItem = gridStates[idx];
+            // 只要格子里有东西，且不是我自己，那就说明被占用了
+            if (otherItem != null && otherItem != item)
+            {
+                return true; // 被钉死！无法移动
+            }
+        }
+
+        return false;
+    }
+
+    // 获取受光环影响的格子索引 (而不是物品)
+    // 专门用于 UnlockSlotEffect 这种对“空也生效”的效果
+    // 获取受光环影响的格子索引 (而不是物品)
+    // 专门用于 UnlockSlotEffect 这种对“空也生效”的效果
+    public IEnumerable<int> GetTargetIndicesByScope(InventoryItem source, PassiveScope scope)
+    {
+        var result = new HashSet<int>();
+        
+        // 目前只实现 Adjacent (最常用), 其他你可以按需扩展
+        switch (scope)
+        {
+            // 上下左右
+            case PassiveScope.Adjacent:
+                result.UnionWith(GetNeighborIndices(source, GridDirections.All));
+                break;
+            case PassiveScope.TopNeighbor:
+                result.UnionWith(GetNeighborIndices(source, GridDirections.Top));
+                break;
+             case PassiveScope.LeftNeighbor:
+                result.UnionWith(GetNeighborIndices(source, GridDirections.Left));
+                break;
+            // 全局解锁？ (扩容包) Maybe
+            // case PassiveScope.Global: ...
+        }
+        return result;
+    }
+
+    // 真正的底层：获取某物品周围的格子索引
+    private HashSet<int> GetNeighborIndices(InventoryItem sourceItem, Vector2Int[] dirs)
+    {
+        var indices = new HashSet<int>();
+        Vector2Int anchorCoord = GetCoord(sourceItem.anchorSlotIndex);
+
+        // ✨ 修复：使用 GetEffectiveShape 来兼容没有配置 ShapeOffsets 的标准矩形物品
+        var effectiveShape = GetEffectiveShape(sourceItem.Width, sourceItem.Height, sourceItem.ShapeOffsets);
+
+        foreach (Vector2Int offset in effectiveShape)
+        {
+            Vector2Int currentCellPos = anchorCoord + offset;
+            foreach (Vector2Int dir in dirs)
+            {
+                Vector2Int targetPos = currentCellPos + dir;
+                
+                // 只要没出界，就算有效 (哪怕没有物品，哪怕是锁的)
+                if (IsValidGridPos(targetPos))
+                {
+                    int idx = GetIndex(targetPos.x, targetPos.y);
+                    indices.Add(idx);
+                }
+            }
+        }
+        return indices;
+    }
+
+
+    public void RefreshInventoryPassives()
+    {
+
         // 1. 获取当前背包所有物品
         allInventoryItems.Clear();
         foreach (var item in gridStates)
@@ -547,40 +796,59 @@ public class InventoryManager : MonoBehaviour
         {
             foreach (var ctx in sourceItem.runtimeItem.GetSourcePassives())
             {
-                var potentialTargets = GetTargetsByScope(sourceItem, ctx.effect.scope, allInventoryItems);
+                // ✨ 条件检查：如果不满足条件 (比如杀敌数不够)，这光环就不生效
+                if (!ctx.effect.IsConditionMet(sourceItem.runtimeItem)) continue;
+
+                var potentialTargets = GetTargetsByScope(sourceItem, ctx.effect.scope);
                 foreach (var target in potentialTargets)
                 {
                     target.runtimeItem.isPassiveActive = true;
-                    target.runtimeItem.passiveMultiplier += 1.0f;
-                    target.runtimeItem.AddTemporaryPassive(ctx.effect,ctx.source);
-
+                    
+                    // ✨ 逻辑分流 (多态重构后)：
+                    // 不再需要 if/else 判断类型，直接让 Effect 自己决定干什么
+                    ctx.effect.ApplyToInventoryItem(target.runtimeItem, ctx.source);
                 }
                 
                 // ... 处理 Allies / Global 等其他类型 ...
             }
            
         }
+
+        // 💡 检查 player 是否已初始化
+        if (!isPlayerInitialized || player == null || player.stateManager == null)
+        {
+            return;
+        }
         
-        player.ClearInventoryPassives();
+        player.stateManager.ClearInventoryPassives();
         foreach (var item in allInventoryItems)
         {
             // 3. 拿到该卡片当前所有的生效被动
             // 注意：GetActivePassives() 应该返回 (静态被动 + 永久随机词条 + 刚才第一阶段加上的临时光环)
             foreach (var ctx in item.runtimeItem.GetActivePassives())
             {
+                // ✨ 注意：ActivePassives 包含了两部分：
+                // 1. 自身的 Source Passives (需要再次检查条件)
+                // 2. 别人贴给我的 Temporary Passives (逻辑上别人贴的时候已经检查过条件了)
+                // 但为了安全起见，或者如果 Effect 本身有动态条件... 
+                // 这里的 ctx.effect 可能是别人的，IsConditionMet(ctx.source) 会检查来源者
+                if (!ctx.effect.IsConditionMet(ctx.source)) continue;
+
                 // 4. 关键过滤：只有 Scope 为 Allies 或 Global 的才发给角色
                 // SelfOnly 通常只影响卡牌自己（比如增加卡牌基础伤害）
-                player.AddTemporaryPassive(ctx.effect, ctx.source);
+                player.stateManager.AddTemporaryPassive(ctx.effect, ctx.source);
 
             }
         }
         
+        // 5. ✨ 同步给角色 UI
+        player.stateManager.NotifyStateChanged();
+        player.stateManager.RefreshTooltips();
     }
     // 根据 Scope 返回对应的物品列表
     private IEnumerable<InventoryItem> GetTargetsByScope(
         InventoryItem source, 
-        PassiveScope scope, 
-        HashSet<InventoryItem> allItems)
+        PassiveScope scope)
     {
         // C# 8.0+ 的 Switch Expression 写法，非常简洁
         return scope switch
@@ -598,5 +866,101 @@ public class InventoryManager : MonoBehaviour
             _ => System.Array.Empty<InventoryItem>()
         };
     }
-    
+
+
+    // ✨ 全局事件：击杀通知
+    public void OnUnitKilled(CharacterBase victim) 
+    {
+        // 遍历背包里所有物品的“原生被动”
+        // 我们只触发 Source Passives，因为是物品自己在记录数据
+        foreach (var item in allInventoryItems)
+        {
+            if (item == null || item.runtimeItem == null) continue;
+
+            foreach (var ctx in item.runtimeItem.GetSourcePassives())
+            {
+                ctx.effect.OnUnitKilled(player, ctx.source, victim);
+            }
+        }
+        
+        // 既然可能有计数器变了，那就得刷新一下状态 (比如可能刚好解锁了)
+        SetDirty();
+    }
+
+    // ✨ 售卖事件广播
+    public void OnItemSold(InventoryItem item)
+    {
+        if (item == null || item.runtimeItem == null) return;
+
+        // 触发被动里的 OnSell 逻辑 (比如永久提升全局变量)
+        // 注意：此时物品虽然还没 Destroy，但即将离开背包
+        foreach (var ctx in item.runtimeItem.GetActivePassives())
+        {
+            if (ctx.effect != null)
+            {
+                ctx.effect.OnSell(item.runtimeItem);
+            }
+        }
+    }
+
+    // =============================================
+    // 存档系统支持
+    // =============================================
+
+    /// <summary>
+    /// 获取所有背包物品 (用于存档)
+    /// </summary>
+    public IEnumerable<InventoryItem> GetAllItems()
+    {
+        return allInventoryItems;
+    }
+
+    /// <summary>
+    /// 从存档添加物品
+    /// </summary>
+    public void AddItemFromSave(RuntimeItem runtimeItem, int slotIndex)
+    {
+        if (runtimeItem == null || runtimeItem.data == null) return;
+
+        // 1. 创建物品 UI
+        var itemObj = Instantiate(itemPrefab, itemContainer);
+        var item = itemObj.GetComponent<InventoryItem>();
+        if (item == null) return;
+
+        // 2. 初始化物品
+        item.Initialize(runtimeItem);
+
+        // 3. 尝试放到指定位置，如果失败则放到第一个可用位置
+        int targetSlot = slotIndex;
+        if (targetSlot < 0 || targetSlot >= totalSlots || !CanPlaceItem(targetSlot, item.Width, item.Height, item.ShapeOffsets))
+        {
+            // 寻找第一个可用位置
+            targetSlot = FindFirstAvailableSlot(item.Width, item.Height, item.ShapeOffsets);
+        }
+
+        if (targetSlot >= 0)
+        {
+            PlaceItem(item, targetSlot);
+        }
+        else
+        {
+            Debug.LogWarning($"[InventoryManager] No space for item: {runtimeItem.data.name}");
+            Destroy(itemObj);
+        }
+    }
+
+    /// <summary>
+    /// 寻找第一个可用的放置位置
+    /// </summary>
+    private int FindFirstAvailableSlot(int width, int height, List<Vector2Int> shape)
+    {
+        for (int i = 0; i < totalSlots; i++)
+        {
+            if (CanPlaceItem(i, width, height, shape))
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
 }

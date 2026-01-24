@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6709ce38c603f1e4891c07b602750034, type: 3}
+  m_Name: StatsIncr
+  m_EditorClassIdentifier: Assembly-CSharp::CardDefinition
+  cardName: StatsIncr
+  description: Deal {1} damage ,{0} times.
+  artwork: {fileID: 6132618406234632, guid: d998e3574c2a58749a86fe79721ae37c, type: 3}
+  minionPrefab: {fileID: 0}
+  manaCost: 1
+  attack: 0
+  health: 0
+  cardType: 1
+  type: 4
+  keywords:
+  - {fileID: 11400000, guid: 2039520527241904e8cde74cecdeed63, type: 2}
+  width: 2
+  height: 2
+  shapeOffsets:
+  - {x: 0, y: 0}
+  - {x: 1, y: 0}
+  - {x: 0, y: 1}
+  price: 100
+  onPlayEffects:
+  - {fileID: 11400000, guid: 6e0ef993024f00248aa69c68de4ea7ff, type: 2}
+  onTurnStartEffects: []
+  onTurnEndEffects: []
+  passives: []
+  needsTarget: 1
+  exhaust: 1
+  customRequirements:
+  - {fileID: 11400000, guid: 75cdf63b39769064b982284c9d8a958e, type: 2}

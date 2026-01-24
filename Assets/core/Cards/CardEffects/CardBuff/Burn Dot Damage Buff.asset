@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd7f9e508f1b93d4ca4310acca86e1fc, type: 3}
+  m_Name: Burn Dot Damage Buff
+  m_EditorClassIdentifier: Assembly-CSharp::BurnDotDamageBuff
+  id: Burn Dot Damage Buff
+  displayName: Burn Dot Damage Buff
+  customValues:
+  - 5
+  - 1
+  descriptionConfig: Deal {1} damage ,{0} times.
+  icon: {fileID: 0}
+  isStackable: 1
+  removeAtTurnEnd: 0
+  baseDamage: 5
+  statsType: 4

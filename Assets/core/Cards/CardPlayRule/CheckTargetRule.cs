@@ -5,7 +5,7 @@ public class CheckTargetRule : PlayRule
 {
     public override string Check(RuntimeItem item, CharacterBase target)
     {
-        if (item.Data.needsTarget && target == null)
+        if (item.data.needsTarget && target == null)
         {
             return "需要选择一个目标！";
         }

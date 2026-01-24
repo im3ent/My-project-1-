@@ -3,49 +3,95 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerDownHandler
 {
     private CanvasGroup canvasGroup;
     protected RectTransform rectTransform;
     private InventoryItem item;
     private Transform originalParent;
-    // ✨ 新增：记录鼠标点击点和物品中心点的距离
+    
+    // 🎯 记录鼠标点击点和物品中心点的距离
     protected Vector2 touchOffset;
+    
+    // 🎯 记录原始点击位置（在 drag threshold 之前）
+    protected Vector2 pointerDownPosition;
+    protected Vector2 pointerDownItemPosition;
+    protected bool hasRecordedDownPosition = false;
 
-
-    private void Awake()
+    public GameObject canvasLayer;
+    
+    protected virtual void Awake()
     {
         canvasGroup = GetComponent<CanvasGroup>();
         rectTransform = GetComponent<RectTransform>();
         item = GetComponent<InventoryItem>();
     }
-
-    public virtual void OnBeginDrag(PointerEventData eventData)
+    
+    /// <summary>
+    /// 🎯 在点击瞬间记录位置（此时还没有 drag threshold）
+    /// </summary>
+    public virtual void OnPointerDown(PointerEventData eventData)
     {
-        // 记录原始父物体（以防万一需要回滚，虽然现在主要靠 Manager）
-        originalParent = transform.parent;
+        if (rectTransform == null) return;
         
-        // ✨✨✨ 1. 计算触点偏移 ✨✨✨
-        // 算出鼠标当前位置，减去物品当前位置，得到偏移向量
-        // 如果是 Screen Space Overlay，可以直接减
-        // 如果是 Camera 模式，需要用 RectTransformUtility.ScreenPointToLocalPointInRectangle
+        // 记录点击时的鼠标位置
+        pointerDownPosition = eventData.position;
         
+        // 记录点击时物品的本地位置（相对于父物体）
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            rectTransform.parent as RectTransform, // 基于父物体坐标系
-            eventData.position, 
-            eventData.pressEventCamera, 
+            rectTransform.parent as RectTransform,
+            eventData.position,
+            eventData.pressEventCamera,
             out var localMousePos
         );
         
-        // 记录：鼠标点在哪里？(相对于物品原本的 anchors position)
+        // 记录偏移 = 鼠标本地位置 - 物品本地位置
         touchOffset = localMousePos - rectTransform.anchoredPosition;
+        
+        hasRecordedDownPosition = true;
+    }
+
+    public virtual void OnBeginDrag(PointerEventData eventData)
+    {
+        // 记录原始父物体（以防万一需要回滚）
+        originalParent = transform.parent;
+        
+        // ✨ 检查是否被钉死 (承重墙逻辑)
+        if (InventoryManager.Instance != null && InventoryManager.Instance.IsItemPinned(item))
+        {
+            Debug.Log("Item is pinned by occupants in unlocked slots!");
+            eventData.pointerDrag = null;
+            hasRecordedDownPosition = false;
+            return;
+        }
+
+        // ✨ 激活这个拥有 Override Sorting 的层级
+        if (canvasLayer != null) 
+        {
+            canvasLayer.SetActive(true); 
+        }
+        
+        // 🎯 如果没有记录位置（保险起见），则实时计算
+        if (!hasRecordedDownPosition)
+        {
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                rectTransform.parent as RectTransform,
+                eventData.position, 
+                eventData.pressEventCamera, 
+                out var localMousePos
+            );
+            touchOffset = localMousePos - rectTransform.anchoredPosition;
+        }
         
         // 提到 UI 最上层
         transform.SetParent(transform.root); 
-        canvasGroup.blocksRaycasts = false; // 允许射线穿透物品检测到底下的格子
+        canvasGroup.blocksRaycasts = false;
         canvasGroup.alpha = 0.6f;
         
-        InventoryManager.Instance.ClearGrid(item.anchorSlotIndex, item.Width, item.Height, item);
+        if (InventoryManager.Instance != null && item != null)
+        {
+            InventoryManager.Instance.ClearGrid(item.anchorSlotIndex, item.Width, item.Height, item);
+        }
     }
 
     public virtual void OnDrag(PointerEventData eventData)
@@ -63,8 +109,9 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
             
         rectTransform.anchoredPosition = localMousePos - touchOffset;
         var shape = (item != null) ? item.ShapeOffsets : null;
-        int bestIndex = GetCurrentGridIndex(); // 获取当前瞄准的格子
-        InventoryManager.Instance.UpdateShadow(bestIndex, item.Width, item.Height, item.runtimeItem.Data.artwork, shape);
+        int bestIndex = GetCurrentGridIndex(eventData.pressEventCamera);
+       //int bestIndex = GetCurrentGridIndex(); // 获取当前瞄准的格子
+        InventoryManager.Instance.UpdateShadow(bestIndex, item.Width, item.Height, item.runtimeItem.data.artwork, shape);
     }
 
     public virtual void OnEndDrag(PointerEventData eventData)
@@ -82,7 +129,7 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
             return; // 卖掉了就直接结束，不用再找格子了
         }
         // 获取最终位置
-        int bestTargetIndex = GetCurrentGridIndex();
+        int bestTargetIndex = GetCurrentGridIndex(eventData.pressEventCamera);
 
         if (bestTargetIndex != -1)
         {
@@ -92,16 +139,20 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         {
             InventoryManager.Instance.PlaceItem(item, item.anchorSlotIndex);
         }
+        if (canvasLayer != null) 
+        {
+            canvasLayer.SetActive(false);
+        }
     }
 
 
     // 射线检测辅助方法
-    protected InventorySlot RaycastForSlot(Vector3 worldPos)
+    protected InventorySlot RaycastForSlot(Vector3 worldPos,Camera eventCamera)
     {
         var pointerData = new PointerEventData(EventSystem.current)
         {
             // 注意：如果是 Overlay 模式，Camera 传 null；如果是 Camera 模式，传 UICamera
-            position = RectTransformUtility.WorldToScreenPoint(null, worldPos)
+            position = RectTransformUtility.WorldToScreenPoint(eventCamera, worldPos)
         };
 
         var results = new List<RaycastResult>();
@@ -111,8 +162,10 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         {
             if (result.gameObject.layer == targetLayer)
             {
-                var slot = result.gameObject.GetComponent<InventorySlot>();
-                if (slot != null) return slot;
+                if (result.gameObject.TryGetComponent<InventorySlot>(out var slot))
+                {
+                    return slot; // 找到了，直接返回
+                }
             }
         }
         return null;
@@ -137,7 +190,7 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     }
     
     // ✨ 将之前的 DetectBestGridPosition 改名为这个，只负责返回 int，不处理逻辑
-    protected int GetCurrentGridIndex(RectTransform targetRect, int w, int h)
+    protected int GetCurrentGridIndex(RectTransform targetRect, int w, int h,Camera eventCamera)
     {
         var width = targetRect.rect.width;
         var height = targetRect.rect.height;
@@ -152,7 +205,7 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
                 float localY = height * 0.5f - (y + 0.5f) * cellH;
             
                 var worldPos = targetRect.TransformPoint(new Vector3(localX, localY, 0));
-                var hitSlot = RaycastForSlot(worldPos);
+                var hitSlot = RaycastForSlot(worldPos,eventCamera);
 
                 if (hitSlot == null) continue;
                 var finalIndex = CalculateAnchorIndex(hitSlot.slotIndex, x, y);
@@ -162,9 +215,9 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         }
         return -1;
     }
-    private int GetCurrentGridIndex()
+    private int GetCurrentGridIndex(Camera eventCamera)
     {
-        return GetCurrentGridIndex(this.rectTransform, item.Width, item.Height);
+        return GetCurrentGridIndex(this.rectTransform, item.Width, item.Height, eventCamera);
     }
     
     // ✨ 处理售卖逻辑
@@ -172,7 +225,7 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
     {
         if (item == null || item.runtimeItem == null) return;
         
-        var data = item.runtimeItem.Data;
+        var data = item.runtimeItem.data;
         // 1. 加钱
         MoneyManager.Instance.AddGold(data.price);
             
@@ -181,6 +234,10 @@ public class Draggable : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDra
         {
             ShopManager.Instance.ReturnCardToPool(data);
         }
+
+        // ✨ 触发售卖被动 (托球手逻辑)
+        InventoryManager.Instance.OnItemSold(item);
+
         // 2. 从背包数据里彻底清除
         // InventoryManager 现在的 ClearGrid 只是清空引用，我们需要一个彻底移除的方法
         InventoryManager.Instance.RemoveItem(item); 
